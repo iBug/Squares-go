@@ -82,7 +82,11 @@ func getSelection(x, y int) int {
 }
 
 func getRotation(x, y, shapeId int) int {
+	rotations := squares.AvailableRotations(shapeId)
 	for i := 0; i < squares.NROTATIONS; i++ {
+		if rotations&(1<<i) == 0 {
+			continue
+		}
 		startX := (i%4*ROTATOR_WIDTH+2)*ROTATOR_CELL_SIZE + BOARD_AREA_WIDTH
 		endX := startX + squares.GetShape(shapeId, i).Width*ROTATOR_CELL_SIZE
 		startY := WINDOW_HEIGHT - ((2-i/4)*ROTATOR_WIDTH+1)*ROTATOR_CELL_SIZE
@@ -144,7 +148,11 @@ func renderSelector(renderer *sdl.Renderer, clientId, shapeId int) {
 }
 
 func renderRotator(renderer *sdl.Renderer, clientId, shapeId, rotation int) {
+	rotations := squares.AvailableRotations(shapeId)
 	for i := 0; i < squares.NROTATIONS; i++ {
+		if rotations&(1<<i) == 0 {
+			continue
+		}
 		setColorForShape(renderer, i, clientId, activePlayer, i == rotation)
 		base := sdl.Rect{
 			X: int32((i%4*ROTATOR_WIDTH+2)*ROTATOR_CELL_SIZE + BOARD_AREA_WIDTH),
@@ -286,7 +294,7 @@ func clientMain() {
 						}
 					}
 				} else if event.Button == sdl.BUTTON_RIGHT {
-					rotation = (rotation + 1) % 8
+					rotation = squares.GetNextRotation(shapeId, rotation)
 				}
 			case *sdl.MouseMotionEvent:
 				gridCursorGhost.X = event.X / GRID_CELL_SIZE * GRID_CELL_SIZE

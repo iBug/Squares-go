@@ -12,8 +12,10 @@ const (
 )
 
 type Shape struct {
-	Grids         []Coord
-	Width, Height int
+	Grids          []Coord
+	Width, Height  int
+	MirrorSymmetry bool
+	RotateSymmetry bool // 180deg rotational symmetry
 }
 
 type Game struct {
@@ -23,27 +25,27 @@ type Game struct {
 }
 
 var gameShapes = []Shape{
-	{[]Coord{{0, 0}}, 1, 1},
-	{[]Coord{{0, 0}, {1, 0}}, 2, 1},
-	{[]Coord{{0, 0}, {1, 0}, {2, 0}}, 3, 1},
-	{[]Coord{{0, 0}, {1, 0}, {0, 1}}, 2, 2},
-	{[]Coord{{0, 0}, {1, 0}, {2, 0}, {3, 0}}, 4, 1},
-	{[]Coord{{0, 0}, {1, 0}, {2, 0}, {0, 1}}, 3, 2},
-	{[]Coord{{0, 0}, {1, 0}, {1, 1}, {2, 1}}, 3, 2},
-	{[]Coord{{0, 0}, {1, 0}, {2, 0}, {1, 1}}, 3, 2},
-	{[]Coord{{0, 0}, {1, 0}, {0, 1}, {1, 1}}, 2, 2},
-	{[]Coord{{0, 0}, {1, 0}, {2, 0}, {3, 0}, {4, 0}}, 5, 1},
-	{[]Coord{{0, 0}, {1, 0}, {2, 0}, {3, 0}, {0, 1}}, 4, 2},
-	{[]Coord{{0, 0}, {1, 0}, {1, 1}, {2, 1}, {3, 1}}, 4, 2},
-	{[]Coord{{0, 0}, {1, 0}, {2, 0}, {3, 0}, {1, 1}}, 4, 2},
-	{[]Coord{{0, 0}, {1, 0}, {2, 0}, {0, 1}, {0, 2}}, 3, 3},
-	{[]Coord{{0, 0}, {1, 0}, {1, 1}, {1, 2}, {2, 2}}, 3, 3},
-	{[]Coord{{0, 0}, {0, 1}, {1, 1}, {2, 1}, {1, 2}}, 3, 3},
-	{[]Coord{{1, 0}, {0, 1}, {1, 1}, {2, 1}, {1, 2}}, 3, 3},
-	{[]Coord{{0, 0}, {1, 0}, {1, 1}, {2, 1}, {2, 2}}, 3, 3},
-	{[]Coord{{0, 0}, {0, 1}, {1, 1}, {2, 1}, {0, 2}}, 3, 3},
-	{[]Coord{{0, 0}, {1, 0}, {2, 0}, {0, 1}, {1, 1}}, 3, 2},
-	{[]Coord{{0, 0}, {1, 0}, {2, 0}, {0, 1}, {2, 1}}, 3, 2},
+	{[]Coord{{0, 0}}, 1, 1, true, true}, // id = 0
+	{[]Coord{{0, 0}, {1, 0}}, 2, 1, true, true},
+	{[]Coord{{0, 0}, {1, 0}, {2, 0}}, 3, 1, true, true},
+	{[]Coord{{0, 0}, {1, 0}, {0, 1}}, 2, 2, true, false},
+	{[]Coord{{0, 0}, {1, 0}, {2, 0}, {3, 0}}, 4, 1, true, true},
+	{[]Coord{{0, 0}, {1, 0}, {2, 0}, {0, 1}}, 3, 2, false, false},
+	{[]Coord{{0, 0}, {1, 0}, {1, 1}, {2, 1}}, 3, 2, false, true},
+	{[]Coord{{0, 0}, {1, 0}, {2, 0}, {1, 1}}, 3, 2, true, false},
+	{[]Coord{{0, 0}, {1, 0}, {0, 1}, {1, 1}}, 2, 2, true, true}, // id = 8
+	{[]Coord{{0, 0}, {1, 0}, {2, 0}, {3, 0}, {4, 0}}, 5, 1, true, true},
+	{[]Coord{{0, 0}, {1, 0}, {2, 0}, {3, 0}, {0, 1}}, 4, 2, false, false},
+	{[]Coord{{0, 0}, {1, 0}, {1, 1}, {2, 1}, {3, 1}}, 4, 2, false, false},
+	{[]Coord{{0, 0}, {1, 0}, {2, 0}, {3, 0}, {1, 1}}, 4, 2, false, false},
+	{[]Coord{{0, 0}, {1, 0}, {2, 0}, {0, 1}, {0, 2}}, 3, 3, true, false},
+	{[]Coord{{0, 0}, {1, 0}, {1, 1}, {1, 2}, {2, 2}}, 3, 3, false, true},
+	{[]Coord{{0, 0}, {0, 1}, {1, 1}, {2, 1}, {1, 2}}, 3, 3, false, false},
+	{[]Coord{{1, 0}, {0, 1}, {1, 1}, {2, 1}, {1, 2}}, 3, 3, true, true}, // id = 16
+	{[]Coord{{0, 0}, {1, 0}, {1, 1}, {2, 1}, {2, 2}}, 3, 3, true, false},
+	{[]Coord{{0, 0}, {0, 1}, {1, 1}, {2, 1}, {0, 2}}, 3, 3, true, false},
+	{[]Coord{{0, 0}, {1, 0}, {2, 0}, {0, 1}, {1, 1}}, 3, 2, false, false},
+	{[]Coord{{0, 0}, {1, 0}, {2, 0}, {0, 1}, {2, 1}}, 3, 2, true, false},
 }
 
 /*********
@@ -92,6 +94,38 @@ func (s Shape) Rotate(rotation int) Shape {
 		res.Grids[i] = dst
 	}
 	return res
+}
+
+func GetNextRotation(shapeId, rotation int) int {
+	switch shapeId {
+	case 0, 8, 16:
+		return 0
+	}
+	rotation++
+	if gameShapes[shapeId].RotateSymmetry && rotation&2 != 0 {
+		rotation += 2
+	}
+	if gameShapes[shapeId].MirrorSymmetry {
+		rotation %= 4
+	} else {
+		rotation %= 8
+	}
+	return rotation
+}
+
+func AvailableRotations(shapeId int) int {
+	switch shapeId {
+	case 0, 8, 16:
+		return 1
+	}
+	rotations := 3
+	if !gameShapes[shapeId].RotateSymmetry {
+		rotations |= rotations << 2
+	}
+	if !gameShapes[shapeId].MirrorSymmetry {
+		rotations |= rotations << 4
+	}
+	return rotations
 }
 
 /********

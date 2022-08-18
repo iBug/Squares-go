@@ -23,9 +23,8 @@ type Chessman struct {
 
 type Game struct {
 	// board[y][x] is the grid at Coord(x, y)
-	board       [BOARD_HEIGHT][BOARD_WIDTH]int
-	pieces      [NPLAYERS][NCHESS]Chessman
-	lostPlayers []int
+	board  [BOARD_HEIGHT][BOARD_WIDTH]int
+	pieces [NPLAYERS][NCHESS]Chessman
 }
 
 var SHAPES = []Shape{
@@ -57,7 +56,7 @@ var SHAPES = []Shape{
 func init() {
 	for i := range SHAPES {
 		for j := range SHAPES[i].Grids {
-			SHAPES[i].Grids[j].X, SHAPES[i].Grids[j].Y = SHAPES[i].Grids[j].Y, SHAPES[i].Grids[j].X
+			SHAPES[i].Grids[j] = SHAPES[i].Grids[j].T()
 		}
 	}
 }
@@ -87,7 +86,7 @@ func (s Shape) Rotate(rotation int) Shape {
 		src := s.Grids[i]
 		var dst Coord
 		switch rotation % NROTATIONS {
-		case 0:
+		default:
 			dst = src
 		case 1:
 			dst.X = res.Width - src.Y - 1
@@ -136,7 +135,6 @@ func (game *Game) GetUsed(cmnum, playerId int) bool {
 
 // was Squares::init in the original C++ version
 func (game *Game) Reset() {
-	game.lostPlayers = nil
 	for i := 0; i < BOARD_HEIGHT; i++ {
 		for j := 0; j < BOARD_WIDTH; j++ {
 			game.board[i][j] = -1
@@ -221,14 +219,15 @@ func (game *Game) Insert(cmnum, rotation int, coord Coord, np int, firstRound bo
 
 // Check if a player has any valid move available
 func (game *Game) CheckPlayer(np int) bool {
-	/** bstatus: Board status
-	 *	 0: This cell is not adjacent to any existing pieces
-	 *	 1: This cell is diagonally adjacent to an existing piece
-	 *	 2: This cell is orthogonally adjacent to, or already covered by, an existing piece
+	/*Board status
+	 *  0: This cell is not adjacent to any existing pieces
+	 *  1: This cell is diagonally adjacent to an existing piece
+	 *  2: This cell is orthogonally adjacent to, or already covered by, an existing piece
 	 */
 	var boardStatus [BOARD_HEIGHT][BOARD_WIDTH]int
 	for y := 0; y < BOARD_HEIGHT; y++ {
 		for x := 0; x < BOARD_WIDTH; x++ {
+			// Mark occupied cells
 			if game.board[y][x] >= 0 {
 				boardStatus[y][x] = 2
 			}
@@ -239,13 +238,13 @@ func (game *Game) CheckPlayer(np int) bool {
 			for _, edge := range EDGES {
 				check := edge.AddXY(x, y)
 				if InRange(check) {
-					boardStatus[y][x] = 2
+					boardStatus[check.Y][check.X] = 2
 				}
 			}
 			for _, corner := range CORNERS {
 				check := corner.AddXY(x, y)
-				if InRange(check) && boardStatus[check.Y][check.X] < 2 {
-					boardStatus[y][x] = 1
+				if InRange(check) && boardStatus[check.Y][check.X] < 1 {
+					boardStatus[check.Y][check.X] = 1
 				}
 			}
 		}
@@ -259,6 +258,7 @@ func (game *Game) CheckPlayer(np int) bool {
 			}
 		}
 	}
+
 	// Enumerate all remaining pieces over all "must cover" cells
 	for i := 0; i < NCHESS; i++ {
 		if game.pieces[np][i].Used {
@@ -266,7 +266,7 @@ func (game *Game) CheckPlayer(np int) bool {
 		}
 		for _, must := range musts {
 			for rotation := 0; rotation < NROTATIONS; rotation++ {
-				shape := SHAPES[i].Rotate(rotation)
+				shape := GetShape(i, rotation)
 				for _, grid := range shape.Grids {
 					pos := must.Sub(grid)
 					if InRange(pos) && game.TryInsert(i, rotation, pos, np, false) {

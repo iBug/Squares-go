@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"math"
 
@@ -43,11 +44,21 @@ var (
 var (
 	game *squares.Game
 
-	id           = 0
+	clientId     = 0
 	activePlayer = 0
 	firstRound   = true
 	lostPlayers  = 0
+
+	fServerAddr       = ""
+	fLocalMultiplayer = false
 )
+
+func parseFlags() {
+	flag.StringVar(&fServerAddr, "a", "", "(unsupported)")
+	flag.Parse()
+
+	fLocalMultiplayer = fServerAddr == ""
+}
 
 func timeLeft(nextTime uint32) uint32 {
 	now := sdl.GetTicks()
@@ -113,9 +124,9 @@ func setColorForShape(renderer *sdl.Renderer, shapeId, playerId, activePlayer in
 	if game.GetUsed(shapeId, playerId) {
 		gridColor = GRID_WRONG_COLOR
 	} else if activePlayer == playerId && useGhostColor {
-		gridColor = GRID_CURSOR_GHOST_COLORS[id]
+		gridColor = GRID_CURSOR_GHOST_COLORS[clientId]
 	} else {
-		gridColor = GRID_CURSOR_COLORS[id]
+		gridColor = GRID_CURSOR_COLORS[clientId]
 	}
 	renderer.SetDrawColor(gridColor.R, gridColor.G, gridColor.B, gridColor.A)
 }
@@ -130,9 +141,9 @@ func renderShape(renderer *sdl.Renderer, shapeId, rotation int, base sdl.Rect, w
 	}
 }
 
-func renderSelector(renderer *sdl.Renderer, xOffset, id, cmnum int) {
+func renderSelector(renderer *sdl.Renderer, xOffset, clientId, cmnum int) {
 	for i := 0; i < squares.NCHESS; i++ {
-		setColorForShape(renderer, i, id, activePlayer, i == cmnum)
+		setColorForShape(renderer, i, clientId, activePlayer, i == cmnum)
 		base := sdl.Rect{
 			X: int32(SELECTOR_POS[i].X*S_SELECELL + xOffset),
 			Y: int32(SELECTOR_POS[i].Y * S_SELECELL),
@@ -143,9 +154,9 @@ func renderSelector(renderer *sdl.Renderer, xOffset, id, cmnum int) {
 	}
 }
 
-func renderRotator(renderer *sdl.Renderer, yOffset, xOffset, cmnum, id, rotation int) {
+func renderRotator(renderer *sdl.Renderer, yOffset, xOffset, cmnum, clientId, rotation int) {
 	for i := 0; i < squares.NROTATIONS; i++ {
-		setColorForShape(renderer, i, id, activePlayer, i == rotation)
+		setColorForShape(renderer, i, clientId, activePlayer, i == rotation)
 		base := sdl.Rect{
 			X: int32((i%4*W_ROTATOR+2)*S_ROTACELL + xOffset),
 			Y: int32(yOffset - ((2-i/4)*W_ROTATOR+1)*S_ROTACELL),
@@ -167,8 +178,8 @@ func isAnyPlayerAlive() bool {
 	return lostPlayers != (1<<squares.NPLAYERS)-1
 }
 
-func afterMove(singleClient bool) bool {
-	if !singleClient {
+func afterMove(isLocalMultiplayerMode bool) bool {
+	if !isLocalMultiplayerMode {
 		firstRound = false
 		return true
 	}
@@ -178,7 +189,6 @@ func afterMove(singleClient bool) bool {
 		if lp := game.GetLostPlayers(); lp != 0 {
 			for i := 0; i < squares.NPLAYERS; i++ {
 				if lp&(1<<i) != 0 {
-					lostPlayers |= 1 << i
 					if !isAnyPlayerAlive() {
 						fmt.Printf("Player %d won!\n", i+1)
 					} else {
@@ -186,27 +196,30 @@ func afterMove(singleClient bool) bool {
 					}
 				}
 			}
+			lostPlayers = lp
 		}
 	} else {
-		if id == squares.NPLAYERS-1 {
+		if clientId == squares.NPLAYERS-1 {
 			firstRound = false
 		}
 	}
 
-	id = (id + 1) % 4
+	clientId = (clientId + 1) % 4
 	if lostPlayers != 0 {
 		if !isAnyPlayerAlive() {
 			activePlayer = -1
 			return false
 		}
-		for _ = id; lostPlayers&(1<<id) != 0; id = (id + 1) % 4 {
+		for _ = clientId; lostPlayers&(1<<clientId) != 0; clientId = (clientId + 1) % 4 {
 		}
 	}
-	activePlayer = id
+	activePlayer = clientId
 	return true
 }
 
 func main() {
+	parseFlags()
+
 	if err := sdl.Init(sdl.INIT_VIDEO); err != nil {
 		panic(err)
 	}
@@ -259,7 +272,7 @@ func main() {
 					gridCursor.X += GRID_CELL_SIZE
 				}
 			case *sdl.MouseButtonEvent:
-				if event.Type != sdl.MOUSEBUTTONDOWN || activePlayer != id {
+				if event.Type != sdl.MOUSEBUTTONDOWN || activePlayer != clientId {
 					break
 				}
 				if event.Button == sdl.BUTTON_LEFT {
@@ -267,9 +280,11 @@ func main() {
 					if event.X < BOARD_WIDTH {
 						gridCursor.X = event.X / GRID_CELL_SIZE * GRID_CELL_SIZE
 						gridCursor.Y = event.Y / GRID_CELL_SIZE * GRID_CELL_SIZE
-						if game.TryInsert(chessman, rotation, squares.Coord{X: int(gridCursor.X), Y: int(gridCursor.Y)}, id, firstRound) {
-							game.Insert(chessman, rotation, squares.Coord{X: int(gridCursor.X), Y: int(gridCursor.Y)}, id, firstRound)
-							if !afterMove(false) {
+						insertPos := squares.Coord{int(gridCursor.X / GRID_CELL_SIZE), int(gridCursor.Y / GRID_CELL_SIZE)}
+						if game.TryInsert(chessman, rotation, insertPos, clientId, firstRound) {
+							game.Insert(chessman, rotation, insertPos, clientId, firstRound)
+							if !afterMove(fLocalMultiplayer) {
+								fmt.Println("Game over!")
 								break
 							}
 						}
@@ -326,16 +341,16 @@ func main() {
 		// Draw grid ghost color
 		if mouseActive && mouseHover && shouldRenderGhost(gridCursorGhost, WINDOW_HEIGHT, BOARD_WIDTH, chessman, rotation) {
 			var useColor sdl.Color
-			if game.TryInsert(chessman, rotation, squares.Coord{int(gridCursorGhost.X / GRID_SIZE), int(gridCursorGhost.Y / GRID_SIZE)}, id, firstRound) {
-				useColor = GRID_CURSOR_GHOST_COLORS[id]
+			if game.TryInsert(chessman, rotation, squares.Coord{int(gridCursorGhost.X / GRID_CELL_SIZE), int(gridCursorGhost.Y / GRID_CELL_SIZE)}, clientId, firstRound) {
+				useColor = GRID_CURSOR_GHOST_COLORS[clientId]
 			} else {
 				useColor = GRID_WRONG_COLOR
 			}
 			insert(renderer, chessman, gridCursorGhost, useColor, rotation)
 		}
 
-		renderSelector(renderer, BOARD_WIDTH, id, chessman)
-		renderRotator(renderer, WINDOW_HEIGHT, BOARD_WIDTH, chessman, id, rotation)
+		renderSelector(renderer, BOARD_WIDTH, clientId, chessman)
+		renderRotator(renderer, WINDOW_HEIGHT, BOARD_WIDTH, chessman, clientId, rotation)
 		renderBoard(renderer)
 
 		renderer.Present()

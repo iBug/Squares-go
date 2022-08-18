@@ -52,9 +52,23 @@ var SHAPES = []Shape{
 	{[]Coord{{0, 0}, {0, 1}, {0, 2}, {1, 0}, {1, 2}}, 3, 2},
 }
 
+// Original C++ code uses std::pair<int y, int x>
+// Need to flip them
+func init() {
+	for i := range SHAPES {
+		for j := range SHAPES[i].Grids {
+			SHAPES[i].Grids[j].X, SHAPES[i].Grids[j].Y = SHAPES[i].Grids[j].Y, SHAPES[i].Grids[j].X
+		}
+	}
+}
+
 /*********
  * Shape *
  *********/
+
+func GetShape(num, rotation int) Shape {
+	return SHAPES[num].Rotate(rotation)
+}
 
 func (s Shape) Size() int {
 	return len(s.Grids)
@@ -110,6 +124,14 @@ func NewGame() *Game {
 	game := &Game{}
 	game.Reset()
 	return game
+}
+
+func (game *Game) At(x, y int) int {
+	return game.board[y][x]
+}
+
+func (game *Game) GetUsed(cmnum, playerId int) bool {
+	return game.pieces[playerId][cmnum].Used
 }
 
 // was Squares::init in the original C++ version
@@ -255,6 +277,16 @@ func (game *Game) CheckPlayer(np int) bool {
 		}
 	}
 	return false
+}
+
+func (game *Game) GetLostPlayers() int {
+	ret := 0
+	for i := 0; i < NPLAYERS; i++ {
+		if !game.CheckPlayer(i) {
+			ret |= 1 << i
+		}
+	}
+	return ret
 }
 
 /**********************************

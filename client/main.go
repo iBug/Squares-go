@@ -206,9 +206,7 @@ func afterMove(isLocalMultiplayerMode bool) bool {
 	return true
 }
 
-func main() {
-	parseFlags()
-
+func clientMain() {
 	if err := sdl.Init(sdl.INIT_VIDEO); err != nil {
 		panic(err)
 	}
@@ -342,4 +340,9 @@ func main() {
 		renderBoard(renderer)
 		renderer.Present()
 	}
+}
+
+func main() {
+	parseFlags()
+	clientMain()
 }

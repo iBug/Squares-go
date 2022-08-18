@@ -1,6 +1,11 @@
 BIN := squares
 
-.PHONY: all
+.PHONY: all $(BIN) $(BIN).exe
 
-all:
-	go build -o $(BIN) -ldflags "-s -w"
+all: $(BIN)
+
+$(BIN):
+	go build -o $@ -ldflags "-s -w"
+
+$(BIN).exe:
+	CGO_ENABLED=1 CC=x86_64-w64-mingw32-gcc GOOS=windows GOARCH=amd64 go build -o $@ -tags static -ldflags "-s -w -H windowsgui"

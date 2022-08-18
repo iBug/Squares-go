@@ -16,49 +16,34 @@ type Shape struct {
 	Width, Height int
 }
 
-type Chessman struct {
-	Shape
-	Used bool
-}
-
 type Game struct {
 	// board[y][x] is the grid at Coord(x, y)
-	board  [BOARD_HEIGHT][BOARD_WIDTH]int
-	pieces [NPLAYERS][NCHESS]Chessman
+	board     [BOARD_HEIGHT][BOARD_WIDTH]int
+	chessUsed [NPLAYERS][NCHESS]bool
 }
 
 var SHAPES = []Shape{
 	{[]Coord{{0, 0}}, 1, 1},
-	{[]Coord{{0, 0}, {0, 1}}, 2, 1},
-	{[]Coord{{0, 0}, {0, 1}, {0, 2}}, 3, 1},
-	{[]Coord{{0, 0}, {0, 1}, {1, 0}}, 2, 2},
-	{[]Coord{{0, 0}, {0, 1}, {0, 2}, {0, 3}}, 4, 1},
-	{[]Coord{{0, 0}, {0, 1}, {0, 2}, {1, 0}}, 3, 2},
-	{[]Coord{{0, 0}, {0, 1}, {1, 1}, {1, 2}}, 3, 2},
-	{[]Coord{{0, 0}, {0, 1}, {0, 2}, {1, 1}}, 3, 2},
-	{[]Coord{{0, 0}, {0, 1}, {1, 0}, {1, 1}}, 2, 2},
-	{[]Coord{{0, 0}, {0, 1}, {0, 2}, {0, 3}, {0, 4}}, 5, 1},
-	{[]Coord{{0, 0}, {0, 1}, {0, 2}, {0, 3}, {1, 0}}, 4, 2},
-	{[]Coord{{0, 0}, {0, 1}, {1, 1}, {1, 2}, {1, 3}}, 4, 2},
-	{[]Coord{{0, 0}, {0, 1}, {0, 2}, {0, 3}, {1, 1}}, 4, 2},
-	{[]Coord{{0, 0}, {0, 1}, {0, 2}, {1, 0}, {2, 0}}, 3, 3},
-	{[]Coord{{0, 0}, {0, 1}, {1, 1}, {2, 1}, {2, 2}}, 3, 3},
-	{[]Coord{{0, 0}, {1, 0}, {1, 1}, {1, 2}, {2, 1}}, 3, 3},
-	{[]Coord{{0, 1}, {1, 0}, {1, 1}, {1, 2}, {2, 1}}, 3, 3},
-	{[]Coord{{0, 0}, {0, 1}, {1, 1}, {1, 2}, {2, 2}}, 3, 3},
-	{[]Coord{{0, 0}, {1, 0}, {1, 1}, {1, 2}, {2, 0}}, 3, 3},
-	{[]Coord{{0, 0}, {0, 1}, {0, 2}, {1, 0}, {1, 1}}, 3, 2},
-	{[]Coord{{0, 0}, {0, 1}, {0, 2}, {1, 0}, {1, 2}}, 3, 2},
-}
-
-// Original C++ code uses std::pair<int y, int x>
-// Need to flip them
-func init() {
-	for i := range SHAPES {
-		for j := range SHAPES[i].Grids {
-			SHAPES[i].Grids[j] = SHAPES[i].Grids[j].T()
-		}
-	}
+	{[]Coord{{0, 0}, {1, 0}}, 2, 1},
+	{[]Coord{{0, 0}, {1, 0}, {2, 0}}, 3, 1},
+	{[]Coord{{0, 0}, {1, 0}, {0, 1}}, 2, 2},
+	{[]Coord{{0, 0}, {1, 0}, {2, 0}, {3, 0}}, 4, 1},
+	{[]Coord{{0, 0}, {1, 0}, {2, 0}, {0, 1}}, 3, 2},
+	{[]Coord{{0, 0}, {1, 0}, {1, 1}, {2, 1}}, 3, 2},
+	{[]Coord{{0, 0}, {1, 0}, {2, 0}, {1, 1}}, 3, 2},
+	{[]Coord{{0, 0}, {1, 0}, {0, 1}, {1, 1}}, 2, 2},
+	{[]Coord{{0, 0}, {1, 0}, {2, 0}, {3, 0}, {4, 0}}, 5, 1},
+	{[]Coord{{0, 0}, {1, 0}, {2, 0}, {3, 0}, {0, 1}}, 4, 2},
+	{[]Coord{{0, 0}, {1, 0}, {1, 1}, {2, 1}, {3, 1}}, 4, 2},
+	{[]Coord{{0, 0}, {1, 0}, {2, 0}, {3, 0}, {1, 1}}, 4, 2},
+	{[]Coord{{0, 0}, {1, 0}, {2, 0}, {0, 1}, {0, 2}}, 3, 3},
+	{[]Coord{{0, 0}, {1, 0}, {1, 1}, {1, 2}, {2, 2}}, 3, 3},
+	{[]Coord{{0, 0}, {0, 1}, {1, 1}, {2, 1}, {1, 2}}, 3, 3},
+	{[]Coord{{1, 0}, {0, 1}, {1, 1}, {2, 1}, {1, 2}}, 3, 3},
+	{[]Coord{{0, 0}, {1, 0}, {1, 1}, {2, 1}, {2, 2}}, 3, 3},
+	{[]Coord{{0, 0}, {0, 1}, {1, 1}, {2, 1}, {0, 2}}, 3, 3},
+	{[]Coord{{0, 0}, {1, 0}, {2, 0}, {0, 1}, {1, 1}}, 3, 2},
+	{[]Coord{{0, 0}, {1, 0}, {2, 0}, {0, 1}, {2, 1}}, 3, 2},
 }
 
 /*********
@@ -130,7 +115,7 @@ func (game *Game) At(x, y int) int {
 }
 
 func (game *Game) GetUsed(cmnum, playerId int) bool {
-	return game.pieces[playerId][cmnum].Used
+	return game.chessUsed[playerId][cmnum]
 }
 
 // was Squares::init in the original C++ version
@@ -140,23 +125,22 @@ func (game *Game) Reset() {
 			game.board[i][j] = -1
 		}
 	}
-	for p := 0; p < len(game.pieces); p++ {
-		for i := 0; i < len(game.pieces[p]); i++ {
-			game.pieces[p][i].Shape = SHAPES[i]
-			game.pieces[p][i].Used = false
+	for p := 0; p < len(game.chessUsed); p++ {
+		for i := 0; i < len(game.chessUsed[p]); i++ {
+			game.chessUsed[p][i] = false
 		}
 	}
 }
 
 func (game *Game) TryInsert(cmnum, rotation int, coord Coord, np int, firstRound bool) bool {
-	if game.pieces[np][cmnum].Used {
+	if game.chessUsed[np][cmnum] {
 		return false
 	}
 	canPlace := false
 	shape := SHAPES[cmnum].Rotate(rotation)
 
 	if firstRound {
-		corner := Coord{0, 0}
+		corner := Coord{}
 		switch np {
 		case 1:
 			corner.X = BOARD_WIDTH - 1
@@ -214,7 +198,7 @@ func (game *Game) Insert(cmnum, rotation int, coord Coord, np int, firstRound bo
 		grid = grid.Add(coord)
 		game.board[grid.Y][grid.X] = np
 	}
-	game.pieces[np][cmnum].Used = true
+	game.chessUsed[np][cmnum] = true
 }
 
 // Check if a player has any valid move available
@@ -261,7 +245,7 @@ func (game *Game) CheckPlayer(np int) bool {
 
 	// Enumerate all remaining pieces over all "must cover" cells
 	for i := 0; i < NCHESS; i++ {
-		if game.pieces[np][i].Used {
+		if game.chessUsed[np][i] {
 			continue
 		}
 		for _, must := range musts {

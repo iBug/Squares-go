@@ -60,10 +60,10 @@ func parseFlags() {
 	fLocalMultiplayer = true
 }
 
-func timeLeft(nextTime uint32) uint32 {
-	now := sdl.GetTicks()
+func timeLeft(nextTime uint64) uint32 {
+	now := sdl.GetTicks64()
 	if now < nextTime {
-		return nextTime - now
+		return uint32(nextTime - now)
 	}
 	return 0
 }
@@ -243,7 +243,7 @@ func clientMain() {
 		H: GRID_CELL_SIZE,
 	}
 
-	nextTime := sdl.GetTicks()
+	nextTime := sdl.GetTicks64()
 	for !quit {
 		for e := sdl.PollEvent(); e != nil; e = sdl.PollEvent() {
 			switch event := e.(type) {
@@ -306,7 +306,7 @@ func clientMain() {
 		// Draw grid background
 		renderer.SetDrawColor(GRID_BACKGROUND.R, GRID_BACKGROUND.G, GRID_BACKGROUND.B, GRID_BACKGROUND.A)
 		sdl.Delay(timeLeft(nextTime))
-		nextTime += uint32(math.Round(INTERVAL))
+		nextTime = sdl.GetTicks64() + uint64(math.Round(INTERVAL))
 		renderer.Clear()
 
 		// Draw grid lines

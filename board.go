@@ -7,8 +7,8 @@ const (
 	GRID_SIZE    = 5
 
 	NPLAYERS   = 4  // max players
-	NCHESS     = 21 // numper of chess pieces
-	NROTATIONS = 8  // number of possible rotations
+	NSHAPES    = 21 // number of shapes
+	NROTATIONS = 8  // number of rotations
 )
 
 type Shape struct {
@@ -19,10 +19,10 @@ type Shape struct {
 type Game struct {
 	// board[y][x] is the grid at Coord(x, y)
 	board     [BOARD_HEIGHT][BOARD_WIDTH]int
-	chessUsed [NPLAYERS][NCHESS]bool
+	chessUsed [NPLAYERS][NSHAPES]bool
 }
 
-var SHAPES = []Shape{
+var gameShapes = []Shape{
 	{[]Coord{{0, 0}}, 1, 1},
 	{[]Coord{{0, 0}, {1, 0}}, 2, 1},
 	{[]Coord{{0, 0}, {1, 0}, {2, 0}}, 3, 1},
@@ -51,23 +51,17 @@ var SHAPES = []Shape{
  *********/
 
 func GetShape(num, rotation int) Shape {
-	return SHAPES[num].Rotate(rotation)
-}
-
-func (s Shape) Size() int {
-	return len(s.Grids)
+	return gameShapes[num].Rotate(rotation)
 }
 
 func (s Shape) Rotate(rotation int) Shape {
-	var res Shape
+	res := Shape{Grids: make([]Coord, len(s.Grids))}
 	if rotation%2 == 0 {
-		res.Width = s.Width
-		res.Height = s.Height
+		res.Width, res.Height = s.Width, s.Height
 	} else {
-		res.Width = s.Height
-		res.Height = s.Width
+		res.Width, res.Height = s.Height, s.Width
 	}
-	for i := 0; i < s.Size(); i++ {
+	for i := 0; i < len(s.Grids); i++ {
 		src := s.Grids[i]
 		var dst Coord
 		switch rotation % NROTATIONS {
@@ -95,7 +89,7 @@ func (s Shape) Rotate(rotation int) Shape {
 			dst.X = src.Y
 			dst.Y = src.X
 		}
-		res.Grids = append(res.Grids, dst)
+		res.Grids[i] = dst
 	}
 	return res
 }
@@ -114,8 +108,8 @@ func (game *Game) At(x, y int) int {
 	return game.board[y][x]
 }
 
-func (game *Game) GetUsed(cmnum, playerId int) bool {
-	return game.chessUsed[playerId][cmnum]
+func (game *Game) GetUsed(playerId, shapeId int) bool {
+	return game.chessUsed[playerId][shapeId]
 }
 
 // was Squares::init in the original C++ version
@@ -132,26 +126,26 @@ func (game *Game) Reset() {
 	}
 }
 
-func (game *Game) TryInsert(cmnum, rotation int, coord Coord, np int, firstRound bool) bool {
-	if game.chessUsed[np][cmnum] {
+func (game *Game) TryInsert(shapeId, rotation int, pos Coord, playerId int, firstRound bool) bool {
+	if game.chessUsed[playerId][shapeId] {
 		return false
 	}
 	canPlace := false
-	shape := SHAPES[cmnum].Rotate(rotation)
+	shape := GetShape(shapeId, rotation)
 
 	if firstRound {
-		corner := Coord{}
-		switch np {
+		corner := Coord{0, 0}
+		switch playerId {
 		case 1:
 			corner.X = BOARD_WIDTH - 1
 		case 3:
-			corner.Y = BOARD_WIDTH - 1
+			corner.Y = BOARD_HEIGHT - 1
 		case 2:
 			corner.X = BOARD_WIDTH - 1
-			corner.Y = BOARD_WIDTH - 1
+			corner.Y = BOARD_HEIGHT - 1
 		}
 		for _, grid := range shape.Grids {
-			pos := coord.Add(grid)
+			pos := pos.Add(grid)
 			if !InRange(pos) {
 				return false
 			}
@@ -161,7 +155,7 @@ func (game *Game) TryInsert(cmnum, rotation int, coord Coord, np int, firstRound
 		}
 	} else {
 		for i := range shape.Grids {
-			shape.Grids[i] = shape.Grids[i].Add(coord)
+			shape.Grids[i] = shape.Grids[i].Add(pos)
 			if !InRange(shape.Grids[i]) {
 				// out of bounds
 				return false
@@ -175,14 +169,14 @@ func (game *Game) TryInsert(cmnum, rotation int, coord Coord, np int, firstRound
 			// Edge rule: No adjacent pieces from the same player
 			for _, edge := range EDGES {
 				check := grid.Add(edge)
-				if InRange(check) && game.board[check.Y][check.X] == np {
+				if InRange(check) && game.board[check.Y][check.X] == playerId {
 					return false
 				}
 			}
 			// Corner rule: One corner must be from the same player
 			for _, corner := range CORNERS {
 				check := grid.Add(corner)
-				if InRange(check) && game.board[check.Y][check.X] == np {
+				if InRange(check) && game.board[check.Y][check.X] == playerId {
 					canPlace = true
 					break
 				}
@@ -192,21 +186,21 @@ func (game *Game) TryInsert(cmnum, rotation int, coord Coord, np int, firstRound
 	return canPlace
 }
 
-func (game *Game) Insert(cmnum, rotation int, coord Coord, np int, firstRound bool) {
-	shape := SHAPES[cmnum].Rotate(rotation)
+func (game *Game) Insert(shapeId, rotation int, pos Coord, playerId int, firstRound bool) {
+	shape := GetShape(shapeId, rotation)
 	for _, grid := range shape.Grids {
-		grid = grid.Add(coord)
-		game.board[grid.Y][grid.X] = np
+		grid = grid.Add(pos)
+		game.board[grid.Y][grid.X] = playerId
 	}
-	game.chessUsed[np][cmnum] = true
+	game.chessUsed[playerId][shapeId] = true
 }
 
 // Check if a player has any valid move available
-func (game *Game) CheckPlayer(np int) bool {
+func (game *Game) CheckPlayer(playerId int) bool {
 	/*Board status
-	 *  0: This cell is not adjacent to any existing pieces
-	 *  1: This cell is diagonally adjacent to an existing piece
-	 *  2: This cell is orthogonally adjacent to, or already covered by, an existing piece
+	 * 0: This cell is not adjacent to any existing pieces
+	 * 1: This cell is diagonally adjacent to an existing piece
+	 * 2: This cell is orthogonally adjacent to, or already covered by, an existing piece
 	 */
 	var boardStatus [BOARD_HEIGHT][BOARD_WIDTH]int
 	for y := 0; y < BOARD_HEIGHT; y++ {
@@ -216,7 +210,7 @@ func (game *Game) CheckPlayer(np int) bool {
 				boardStatus[y][x] = 2
 			}
 			// Calculate adjacency only for same-color cells
-			if game.board[y][x] != np {
+			if game.board[y][x] != playerId {
 				continue
 			}
 			for _, edge := range EDGES {
@@ -244,8 +238,8 @@ func (game *Game) CheckPlayer(np int) bool {
 	}
 
 	// Enumerate all remaining pieces over all "must cover" cells
-	for i := 0; i < NCHESS; i++ {
-		if game.chessUsed[np][i] {
+	for i := 0; i < NSHAPES; i++ {
+		if game.chessUsed[playerId][i] {
 			continue
 		}
 		for _, must := range musts {
@@ -253,7 +247,7 @@ func (game *Game) CheckPlayer(np int) bool {
 				shape := GetShape(i, rotation)
 				for _, grid := range shape.Grids {
 					pos := must.Sub(grid)
-					if InRange(pos) && game.TryInsert(i, rotation, pos, np, false) {
+					if InRange(pos) && game.TryInsert(i, rotation, pos, playerId, false) {
 						return true
 					}
 				}

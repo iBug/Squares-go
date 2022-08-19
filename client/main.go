@@ -322,7 +322,7 @@ func clientMain() {
 func main() {
 	parseFlags()
 	if fIsServer {
-		ServerMain()
+		serverMain()
 	} else {
 		clientMain()
 	}

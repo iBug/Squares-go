@@ -1,10 +1,11 @@
 package main
 
 import (
-	"bytes"
 	"encoding/binary"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"io"
 
 	squares "github.com/iBug/Squares-go"
 )
@@ -29,18 +30,18 @@ const (
 type ConnectReq struct {
 	// Empty Id: New connection
 	// With Id: Reconnect an existing session
-	Id string `json:"id"`
+	Id int `json:"id"`
 }
 
 type ConnectRes struct {
-	Id           string       `json:"id"`        // Empty Id: Auth failure
+	Id           int          `json:"id"`        // Empty Id: Auth failure
 	PlayerId     int          `json:"player_id"` // Range: 0-3
 	Game         squares.Game `json:"game"`
 	ActivePlayer int          `json:"active_player"`
 }
 
 type MoveReq struct {
-	Id       string `json:"id"`
+	Id       int    `json:"id"`
 	ShapeId  int    `json:"shape"`
 	Pos      [2]int `json:"pos"`
 	Rotation int    `json:"rotation"`
@@ -58,7 +59,7 @@ type OtherMoveRes struct {
 	Rotation int    `json:"rotation"`
 }
 
-func Marshal(message any) ([]byte, error) {
+func SendMsg(w io.Writer, message any) error {
 	var msgType uint16
 	switch message.(type) {
 	case ConnectReq:
@@ -72,28 +73,36 @@ func Marshal(message any) ([]byte, error) {
 	case OtherMoveRes:
 		msgType = OTHER_MOVE_RES
 	default:
-		return nil, errors.New("not implemented")
+		return errors.New("not implemented")
 	}
 
 	data, err := json.Marshal(message)
 	if err != nil {
-		return nil, err
+		return err
 	}
-	var b bytes.Buffer
-	binary.Write(&b, binary.LittleEndian, msgType)
-	binary.Write(&b, binary.LittleEndian, uint16(len(data)))
-	b.Write(data)
-	return b.Bytes(), nil
+	binary.Write(w, binary.LittleEndian, msgType)
+	binary.Write(w, binary.LittleEndian, uint16(len(data)))
+	_, err = w.Write(data)
+	return err
 }
 
-func Unmarshal(data []byte) (any, error) {
-	if len(data) < 4 {
-		return nil, errors.New("invalid data")
+func RecvMsg(r io.Reader) (any, error) {
+	b := make([]byte, 2)
+	_, err := io.ReadFull(r, b)
+	if err != nil {
+		return nil, err
 	}
-	msgType := binary.LittleEndian.Uint16(data[:2])
-	msgLen := binary.LittleEndian.Uint16(data[2:4])
-	if len(data) < int(msgLen)+4 {
-		return nil, errors.New("not enough data")
+	msgType := binary.LittleEndian.Uint16(b)
+	_, err = io.ReadFull(r, b)
+	if err != nil {
+		return nil, err
+	}
+	msgLen := binary.LittleEndian.Uint16(b)
+
+	data := make([]byte, msgLen)
+	_, err = io.ReadFull(r, data)
+	if err != nil {
+		return nil, err
 	}
 
 	var message any
@@ -109,8 +118,8 @@ func Unmarshal(data []byte) (any, error) {
 	case OTHER_MOVE_RES:
 		message = OtherMoveRes{}
 	default:
-		return nil, errors.New("not implemented")
+		return nil, fmt.Errorf("not implemented: %d", msgType)
 	}
-	err := json.Unmarshal(data[4:msgLen+4], &message)
+	err = json.Unmarshal(data, &message)
 	return message, err
 }

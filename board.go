@@ -19,9 +19,9 @@ type Shape struct {
 }
 
 type Game struct {
-	// board[y][x] is the grid at Coord(x, y)
-	board     [BOARD_HEIGHT][BOARD_WIDTH]int
-	chessUsed [NPLAYERS][NSHAPES]bool
+	// Board[y][x] is the grid at Coord(x, y)
+	Board     [BOARD_HEIGHT][BOARD_WIDTH]int `json:"board"`
+	ChessUsed [NPLAYERS][NSHAPES]bool        `json:"chess_used"`
 }
 
 var gameShapes = []Shape{
@@ -113,6 +113,21 @@ func GetNextRotation(shapeId, rotation int) int {
 	return rotation
 }
 
+func GetPrevRotation(shapeId, rotation int) int {
+	switch shapeId {
+	case 0, 8, 16:
+		return 0
+	}
+	rotation = (rotation + 7) % 8
+	if gameShapes[shapeId].RotateSymmetry {
+		rotation &= ^2
+	}
+	if gameShapes[shapeId].MirrorSymmetry {
+		rotation &= ^4
+	}
+	return rotation
+}
+
 func AvailableRotations(shapeId int) int {
 	switch shapeId {
 	case 0, 8, 16:
@@ -139,29 +154,29 @@ func NewGame() *Game {
 }
 
 func (game *Game) At(x, y int) int {
-	return game.board[y][x]
+	return game.Board[y][x]
 }
 
 func (game *Game) GetUsed(playerId, shapeId int) bool {
-	return game.chessUsed[playerId][shapeId]
+	return game.ChessUsed[playerId][shapeId]
 }
 
 // was Squares::init in the original C++ version
 func (game *Game) Reset() {
 	for i := 0; i < BOARD_HEIGHT; i++ {
 		for j := 0; j < BOARD_WIDTH; j++ {
-			game.board[i][j] = -1
+			game.Board[i][j] = -1
 		}
 	}
-	for p := 0; p < len(game.chessUsed); p++ {
-		for i := 0; i < len(game.chessUsed[p]); i++ {
-			game.chessUsed[p][i] = false
+	for p := 0; p < len(game.ChessUsed); p++ {
+		for i := 0; i < len(game.ChessUsed[p]); i++ {
+			game.ChessUsed[p][i] = false
 		}
 	}
 }
 
 func (game *Game) TryInsert(shapeId, rotation int, pos Coord, playerId int, firstRound bool) bool {
-	if game.chessUsed[playerId][shapeId] {
+	if game.ChessUsed[playerId][shapeId] {
 		return false
 	}
 	canPlace := false
@@ -194,7 +209,7 @@ func (game *Game) TryInsert(shapeId, rotation int, pos Coord, playerId int, firs
 				// out of bounds
 				return false
 			}
-			if game.board[shape.Grids[i].Y][shape.Grids[i].X] > 0 {
+			if game.Board[shape.Grids[i].Y][shape.Grids[i].X] > 0 {
 				// already occupied
 				return false
 			}
@@ -203,14 +218,14 @@ func (game *Game) TryInsert(shapeId, rotation int, pos Coord, playerId int, firs
 			// Edge rule: No adjacent pieces from the same player
 			for _, edge := range EDGES {
 				check := grid.Add(edge)
-				if InRange(check) && game.board[check.Y][check.X] == playerId {
+				if InRange(check) && game.Board[check.Y][check.X] == playerId {
 					return false
 				}
 			}
 			// Corner rule: One corner must be from the same player
 			for _, corner := range CORNERS {
 				check := grid.Add(corner)
-				if InRange(check) && game.board[check.Y][check.X] == playerId {
+				if InRange(check) && game.Board[check.Y][check.X] == playerId {
 					canPlace = true
 					break
 				}
@@ -224,9 +239,9 @@ func (game *Game) Insert(shapeId, rotation int, pos Coord, playerId int, firstRo
 	shape := GetShape(shapeId, rotation)
 	for _, grid := range shape.Grids {
 		grid = grid.Add(pos)
-		game.board[grid.Y][grid.X] = playerId
+		game.Board[grid.Y][grid.X] = playerId
 	}
-	game.chessUsed[playerId][shapeId] = true
+	game.ChessUsed[playerId][shapeId] = true
 }
 
 // Check if a player has any valid move available
@@ -240,11 +255,11 @@ func (game *Game) CheckPlayer(playerId int) bool {
 	for y := 0; y < BOARD_HEIGHT; y++ {
 		for x := 0; x < BOARD_WIDTH; x++ {
 			// Mark occupied cells
-			if game.board[y][x] >= 0 {
+			if game.Board[y][x] >= 0 {
 				boardStatus[y][x] = 2
 			}
 			// Calculate adjacency only for same-color cells
-			if game.board[y][x] != playerId {
+			if game.Board[y][x] != playerId {
 				continue
 			}
 			for _, edge := range EDGES {
@@ -273,7 +288,7 @@ func (game *Game) CheckPlayer(playerId int) bool {
 
 	// Enumerate all remaining pieces over all "must cover" cells
 	for i := 0; i < NSHAPES; i++ {
-		if game.chessUsed[playerId][i] {
+		if game.ChessUsed[playerId][i] {
 			continue
 		}
 		for _, must := range musts {

@@ -48,7 +48,7 @@ var (
 )
 
 func parseFlags() {
-	flag.StringVar(&fServerAddr, "a", "", "(unsupported)")
+	flag.StringVar(&fServerAddr, "a", "", "connect to server")
 	flag.BoolVar(&fUseDarkTheme, "d", false, "use dark theme")
 	flag.BoolVar(&fIsServer, "s", false, "run as server")
 	flag.Parse()
@@ -256,6 +256,9 @@ func clientMain() {
 		for e := sdl.PollEvent(); e != nil; e = sdl.PollEvent() {
 			switch event := e.(type) {
 			case *sdl.KeyboardEvent:
+				if event.State != sdl.PRESSED {
+					continue
+				}
 				switch event.Keysym.Sym {
 				case sdl.K_w, sdl.K_UP:
 					gridCursor.Y -= GRID_CELL_SIZE
@@ -265,6 +268,16 @@ func clientMain() {
 					gridCursor.X -= GRID_CELL_SIZE
 				case sdl.K_d, sdl.K_RIGHT:
 					gridCursor.X += GRID_CELL_SIZE
+				case sdl.K_e, sdl.K_SPACE:
+					rotation = squares.GetNextRotation(shapeId, rotation)
+				}
+			case *sdl.MouseWheelEvent:
+				if event.Y > 0 {
+					// Scroll up
+					rotation = squares.GetPrevRotation(shapeId, rotation)
+				} else if event.Y < 0 {
+					// Scroll down
+					rotation = squares.GetNextRotation(shapeId, rotation)
 				}
 			case *sdl.MouseButtonEvent:
 				if event.Type != sdl.MOUSEBUTTONDOWN || activePlayer != clientId {

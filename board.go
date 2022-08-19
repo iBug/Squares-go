@@ -1,146 +1,25 @@
 package squares
 
+import "fmt"
+
 const (
 	BOARD_SIZE   = 21
 	BOARD_WIDTH  = BOARD_SIZE
 	BOARD_HEIGHT = BOARD_SIZE
 	GRID_SIZE    = 5
 
-	NPLAYERS   = 4  // max players
-	NSHAPES    = 21 // number of shapes
-	NROTATIONS = 8  // number of rotations
+	NPLAYERS = 4 // max players
 )
 
-type Shape struct {
-	Grids          []Coord
-	Width, Height  int
-	MirrorSymmetry bool
-	RotateSymmetry bool // 180deg rotational symmetry
-}
-
+// The state of a game board
 type Game struct {
 	// Board[y][x] is the grid at Coord(x, y)
 	Board     [BOARD_HEIGHT][BOARD_WIDTH]int `json:"board"`
 	ChessUsed [NPLAYERS][NSHAPES]bool        `json:"chess_used"`
-}
 
-var gameShapes = []Shape{
-	{[]Coord{{0, 0}}, 1, 1, true, true}, // id = 0
-	{[]Coord{{0, 0}, {1, 0}}, 2, 1, true, true},
-	{[]Coord{{0, 0}, {1, 0}, {2, 0}}, 3, 1, true, true},
-	{[]Coord{{0, 0}, {1, 0}, {0, 1}}, 2, 2, true, false},
-	{[]Coord{{0, 0}, {1, 0}, {2, 0}, {3, 0}}, 4, 1, true, true},
-	{[]Coord{{0, 0}, {1, 0}, {2, 0}, {0, 1}}, 3, 2, false, false},
-	{[]Coord{{0, 0}, {1, 0}, {1, 1}, {2, 1}}, 3, 2, false, true},
-	{[]Coord{{0, 0}, {1, 0}, {2, 0}, {1, 1}}, 3, 2, true, false},
-	{[]Coord{{0, 0}, {1, 0}, {0, 1}, {1, 1}}, 2, 2, true, true}, // id = 8
-	{[]Coord{{0, 0}, {1, 0}, {2, 0}, {3, 0}, {4, 0}}, 5, 1, true, true},
-	{[]Coord{{0, 0}, {1, 0}, {2, 0}, {3, 0}, {0, 1}}, 4, 2, false, false},
-	{[]Coord{{0, 0}, {1, 0}, {1, 1}, {2, 1}, {3, 1}}, 4, 2, false, false},
-	{[]Coord{{0, 0}, {1, 0}, {2, 0}, {3, 0}, {1, 1}}, 4, 2, false, false},
-	{[]Coord{{0, 0}, {1, 0}, {2, 0}, {0, 1}, {0, 2}}, 3, 3, true, false},
-	{[]Coord{{0, 0}, {1, 0}, {1, 1}, {1, 2}, {2, 2}}, 3, 3, false, true},
-	{[]Coord{{0, 0}, {0, 1}, {1, 1}, {2, 1}, {1, 2}}, 3, 3, false, false},
-	{[]Coord{{1, 0}, {0, 1}, {1, 1}, {2, 1}, {1, 2}}, 3, 3, true, true}, // id = 16
-	{[]Coord{{0, 0}, {1, 0}, {1, 1}, {2, 1}, {2, 2}}, 3, 3, true, false},
-	{[]Coord{{0, 0}, {0, 1}, {1, 1}, {2, 1}, {0, 2}}, 3, 3, true, false},
-	{[]Coord{{0, 0}, {1, 0}, {2, 0}, {0, 1}, {1, 1}}, 3, 2, false, false},
-	{[]Coord{{0, 0}, {1, 0}, {2, 0}, {0, 1}, {2, 1}}, 3, 2, true, false},
-}
-
-/*********
- * Shape *
- *********/
-
-func GetShape(num, rotation int) Shape {
-	return gameShapes[num].Rotate(rotation)
-}
-
-func (s Shape) Rotate(rotation int) Shape {
-	res := Shape{Grids: make([]Coord, len(s.Grids))}
-	if rotation%2 == 0 {
-		res.Width, res.Height = s.Width, s.Height
-	} else {
-		res.Width, res.Height = s.Height, s.Width
-	}
-	for i := 0; i < len(s.Grids); i++ {
-		src := s.Grids[i]
-		var dst Coord
-		switch rotation % NROTATIONS {
-		default:
-			dst = src
-		case 1:
-			dst.X = res.Width - src.Y - 1
-			dst.Y = src.X
-		case 2:
-			dst.X = res.Width - src.X - 1
-			dst.Y = res.Height - src.Y - 1
-		case 3:
-			dst.X = src.Y
-			dst.Y = res.Height - src.X - 1
-		case 4: // mirrored
-			dst.X = res.Width - src.X - 1
-			dst.Y = src.Y
-		case 5:
-			dst.X = res.Width - src.Y - 1
-			dst.Y = res.Height - src.X - 1
-		case 6:
-			dst.X = src.X
-			dst.Y = res.Height - src.Y - 1
-		case 7:
-			dst.X = src.Y
-			dst.Y = src.X
-		}
-		res.Grids[i] = dst
-	}
-	return res
-}
-
-func GetNextRotation(shapeId, rotation int) int {
-	switch shapeId {
-	case 0, 8, 16:
-		return 0
-	}
-	rotation++
-	if gameShapes[shapeId].RotateSymmetry && rotation&2 != 0 {
-		rotation += 2
-	}
-	if gameShapes[shapeId].MirrorSymmetry {
-		rotation %= 4
-	} else {
-		rotation %= 8
-	}
-	return rotation
-}
-
-func GetPrevRotation(shapeId, rotation int) int {
-	switch shapeId {
-	case 0, 8, 16:
-		return 0
-	}
-	rotation = (rotation + 7) % 8
-	if gameShapes[shapeId].RotateSymmetry {
-		rotation &= ^2
-	}
-	if gameShapes[shapeId].MirrorSymmetry {
-		rotation &= ^4
-	}
-	return rotation
-}
-
-func AvailableRotations(shapeId int) int {
-	switch shapeId {
-	case 0, 8, 16:
-		return 1
-	}
-	rotations := 3
-	if !gameShapes[shapeId].RotateSymmetry {
-		rotations |= rotations << 2
-	}
-	if !gameShapes[shapeId].MirrorSymmetry {
-		rotations |= rotations << 4
-	}
-	return rotations
+	ActivePlayer int  `json:"active_player"` // Who's next, -1 = game over
+	FirstRound   bool `json:"first_round"`
+	LostPlayers  int  `json:"lost_players"` // Cached value from GetLostPlayers()
 }
 
 /********
@@ -163,6 +42,10 @@ func (game *Game) GetUsed(playerId, shapeId int) bool {
 
 // was Squares::init in the original C++ version
 func (game *Game) Reset() {
+	game.ActivePlayer = 0
+	game.FirstRound = true
+	game.LostPlayers = 0
+
 	for i := 0; i < BOARD_HEIGHT; i++ {
 		for j := 0; j < BOARD_WIDTH; j++ {
 			game.Board[i][j] = -1
@@ -235,13 +118,45 @@ func (game *Game) TryInsert(shapeId, rotation int, pos Coord, playerId int, firs
 	return canPlace
 }
 
-func (game *Game) Insert(shapeId, rotation int, pos Coord, playerId int, firstRound bool) {
+func (game *Game) Insert(shapeId, rotation int, pos Coord, playerId int) {
 	shape := GetShape(shapeId, rotation)
 	for _, grid := range shape.Grids {
 		grid = grid.Add(pos)
 		game.Board[grid.Y][grid.X] = playerId
 	}
 	game.ChessUsed[playerId][shapeId] = true
+
+	game.LostPlayers = -1 // so it's calculated the next time GetLostPlayers() is called
+}
+
+func (game *Game) AfterMove() bool {
+	if !game.FirstRound {
+		if lp := game.GetLostPlayers(); lp != 0 {
+			for i := 0; i < NPLAYERS; i++ {
+				if lp&(1<<i) != 0 {
+					if !game.IsAnyPlayerAlive() {
+						fmt.Printf("Player %d won!\n", i+1)
+					} else {
+						fmt.Printf("Player %d lost!\n", i+1)
+					}
+				}
+			}
+		}
+	} else if game.ActivePlayer == NPLAYERS-1 {
+		game.FirstRound = false
+	}
+
+	activePlayer := (game.ActivePlayer + 1) % NPLAYERS
+	if game.GetLostPlayers() != 0 {
+		if !game.IsAnyPlayerAlive() {
+			game.ActivePlayer = -1
+			return false
+		}
+		for _ = activePlayer; game.LostPlayers&(1<<activePlayer) != 0; activePlayer = (activePlayer + 1) % NPLAYERS {
+		}
+	}
+	game.ActivePlayer = activePlayer
+	return true
 }
 
 // Check if a player has any valid move available
@@ -306,7 +221,11 @@ func (game *Game) CheckPlayer(playerId int) bool {
 	return false
 }
 
-func (game *Game) GetLostPlayers() int {
+func (game *Game) FindLostPlayers() int {
+	if game.FirstRound {
+		return 0
+	}
+
 	ret := 0
 	for i := 0; i < NPLAYERS; i++ {
 		if !game.CheckPlayer(i) {
@@ -314,6 +233,18 @@ func (game *Game) GetLostPlayers() int {
 		}
 	}
 	return ret
+}
+
+func (game *Game) GetLostPlayers() int {
+	if game.LostPlayers >= 0 {
+		return game.LostPlayers
+	}
+	game.LostPlayers = game.FindLostPlayers()
+	return game.LostPlayers
+}
+
+func (game *Game) IsAnyPlayerAlive() bool {
+	return game.GetLostPlayers() != (1<<NPLAYERS)-1
 }
 
 /**********************************

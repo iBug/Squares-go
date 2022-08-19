@@ -34,12 +34,8 @@ var (
 )
 
 var (
-	game *squares.Game
-
-	clientId     = 0
-	activePlayer = 0
-	firstRound   = true
-	lostPlayers  = 0
+	game     = squares.NewGame()
+	clientId = 0 // which player this client represents
 
 	fServerAddr       = ""
 	fIsServer         = false
@@ -48,7 +44,7 @@ var (
 )
 
 func parseFlags() {
-	flag.StringVar(&fServerAddr, "a", "", "connect to server")
+	flag.StringVar(&fServerAddr, "a", "", "server address")
 	flag.BoolVar(&fUseDarkTheme, "d", false, "use dark theme")
 	flag.BoolVar(&fIsServer, "s", false, "run as server")
 	flag.Parse()
@@ -112,11 +108,11 @@ func renderBoard(renderer *sdl.Renderer) {
 }
 
 // Extracted common code from renderSelection and renderRotator
-func setColorForShape(renderer *sdl.Renderer, shapeId, playerId, activePlayer int, useGhostColor bool) {
+func setColorForShape(renderer *sdl.Renderer, shapeId, playerId int, useGhostColor bool) {
 	var gridColor sdl.Color
 	if game.GetUsed(playerId, shapeId) {
 		gridColor = GRID_WRONG_COLOR
-	} else if activePlayer == playerId && useGhostColor {
+	} else if game.ActivePlayer == playerId && useGhostColor {
 		gridColor = GRID_CURSOR_GHOST_COLORS[clientId]
 	} else {
 		gridColor = GRID_CURSOR_COLORS[clientId]
@@ -136,7 +132,7 @@ func renderShape(renderer *sdl.Renderer, shapeId, rotation int, topleft sdl.Rect
 
 func renderSelector(renderer *sdl.Renderer, clientId, shapeId int) {
 	for i := 0; i < squares.NSHAPES; i++ {
-		setColorForShape(renderer, i, clientId, activePlayer, i == shapeId)
+		setColorForShape(renderer, i, clientId, i == shapeId)
 		base := sdl.Rect{
 			X: int32(SELECTOR_POS[i].X*SELECTOR_CELL_SIZE + BOARD_AREA_WIDTH),
 			Y: int32(SELECTOR_POS[i].Y * SELECTOR_CELL_SIZE),
@@ -153,7 +149,7 @@ func renderRotator(renderer *sdl.Renderer, clientId, shapeId, rotation int) {
 		if rotations&(1<<i) == 0 {
 			continue
 		}
-		setColorForShape(renderer, i, clientId, activePlayer, i == rotation)
+		setColorForShape(renderer, i, clientId, i == rotation)
 		base := sdl.Rect{
 			X: int32((i%4*ROTATOR_WIDTH+2)*ROTATOR_CELL_SIZE + BOARD_AREA_WIDTH),
 			Y: int32(WINDOW_HEIGHT - ((2-i/4)*ROTATOR_WIDTH+1)*ROTATOR_CELL_SIZE),
@@ -169,49 +165,6 @@ func shouldRenderGhost(topleft sdl.Rect, shapeId, rotation int) bool {
 	x := int(topleft.X)+squares.GetShape(shapeId, rotation).Width*GRID_CELL_SIZE <= WINDOW_HEIGHT
 	y := int(topleft.Y)+squares.GetShape(shapeId, rotation).Height*GRID_CELL_SIZE <= BOARD_AREA_WIDTH
 	return x && y
-}
-
-func isAnyPlayerAlive() bool {
-	return lostPlayers != (1<<squares.NPLAYERS)-1
-}
-
-func afterMove(isLocalMultiplayerMode bool) bool {
-	if !isLocalMultiplayerMode {
-		firstRound = false
-		return true
-	}
-
-	// 4 players on one client
-	if !firstRound {
-		if lp := game.GetLostPlayers(); lp != 0 {
-			for i := 0; i < squares.NPLAYERS; i++ {
-				if lp&(1<<i) != 0 {
-					if !isAnyPlayerAlive() {
-						fmt.Printf("Player %d won!\n", i+1)
-					} else {
-						fmt.Printf("Player %d lost!\n", i+1)
-					}
-				}
-			}
-			lostPlayers = lp
-		}
-	} else {
-		if clientId == squares.NPLAYERS-1 {
-			firstRound = false
-		}
-	}
-
-	clientId = (clientId + 1) % 4
-	if lostPlayers != 0 {
-		if !isAnyPlayerAlive() {
-			activePlayer = -1
-			return false
-		}
-		for _ = clientId; lostPlayers&(1<<clientId) != 0; clientId = (clientId + 1) % 4 {
-		}
-	}
-	activePlayer = clientId
-	return true
 }
 
 func clientMain() {
@@ -230,7 +183,7 @@ func clientMain() {
 	window.SetTitle("Squares")
 
 	// Initialize data
-	game = squares.NewGame()
+	game.Reset()
 	shapeId := 0
 	rotation := 0
 
@@ -280,7 +233,7 @@ func clientMain() {
 					rotation = squares.GetNextRotation(shapeId, rotation)
 				}
 			case *sdl.MouseButtonEvent:
-				if event.Type != sdl.MOUSEBUTTONDOWN || activePlayer != clientId {
+				if event.Type != sdl.MOUSEBUTTONDOWN || game.ActivePlayer != clientId {
 					break
 				}
 				if event.Button == sdl.BUTTON_LEFT {
@@ -289,11 +242,14 @@ func clientMain() {
 						gridCursor.X = event.X / GRID_CELL_SIZE * GRID_CELL_SIZE
 						gridCursor.Y = event.Y / GRID_CELL_SIZE * GRID_CELL_SIZE
 						insertPos := squares.Coord{int(gridCursor.X / GRID_CELL_SIZE), int(gridCursor.Y / GRID_CELL_SIZE)}
-						if game.TryInsert(shapeId, rotation, insertPos, clientId, firstRound) {
-							game.Insert(shapeId, rotation, insertPos, clientId, firstRound)
-							if !afterMove(fLocalMultiplayer) {
+						if game.TryInsert(shapeId, rotation, insertPos, clientId, game.FirstRound) {
+							game.Insert(shapeId, rotation, insertPos, clientId)
+							if !game.AfterMove() {
 								fmt.Println("Game over!")
 								break
+							}
+							if fLocalMultiplayer {
+								clientId = game.ActivePlayer
 							}
 						}
 					} else if event.Y < SELECTOR_AREA_HEIGHT {
@@ -347,7 +303,7 @@ func clientMain() {
 		// Draw grid ghost color
 		if mouseActive && mouseHover && shouldRenderGhost(gridCursorGhost, shapeId, rotation) {
 			var useColor sdl.Color
-			if game.TryInsert(shapeId, rotation, squares.Coord{int(gridCursorGhost.X / GRID_CELL_SIZE), int(gridCursorGhost.Y / GRID_CELL_SIZE)}, clientId, firstRound) {
+			if game.TryInsert(shapeId, rotation, squares.Coord{int(gridCursorGhost.X / GRID_CELL_SIZE), int(gridCursorGhost.Y / GRID_CELL_SIZE)}, clientId, game.FirstRound) {
 				useColor = GRID_CURSOR_GHOST_COLORS[clientId]
 			} else {
 				useColor = GRID_WRONG_COLOR

@@ -34,8 +34,8 @@ var (
 )
 
 var (
-	game     = squares.NewGame()
-	clientId = 0 // which player this client represents
+	game         = squares.NewGame()
+	clientPlayer = 0 // which player this client represents
 
 	fServerAddr       = ""
 	fIsServer         = false
@@ -113,9 +113,9 @@ func setColorForShape(renderer *sdl.Renderer, shapeId, playerId int, useGhostCol
 	if game.GetUsed(playerId, shapeId) {
 		gridColor = GRID_WRONG_COLOR
 	} else if game.ActivePlayer == playerId && useGhostColor {
-		gridColor = GRID_CURSOR_GHOST_COLORS[clientId]
+		gridColor = GRID_CURSOR_GHOST_COLORS[clientPlayer]
 	} else {
-		gridColor = GRID_CURSOR_COLORS[clientId]
+		gridColor = GRID_CURSOR_COLORS[clientPlayer]
 	}
 	renderer.SetDrawColor(gridColor.R, gridColor.G, gridColor.B, gridColor.A)
 }
@@ -130,9 +130,9 @@ func renderShape(renderer *sdl.Renderer, shapeId, rotation int, topleft sdl.Rect
 	}
 }
 
-func renderSelector(renderer *sdl.Renderer, clientId, shapeId int) {
+func renderSelector(renderer *sdl.Renderer, clientPlayer, shapeId int) {
 	for i := 0; i < squares.NSHAPES; i++ {
-		setColorForShape(renderer, i, clientId, i == shapeId)
+		setColorForShape(renderer, i, clientPlayer, i == shapeId)
 		base := sdl.Rect{
 			X: int32(SELECTOR_POS[i].X*SELECTOR_CELL_SIZE + BOARD_AREA_WIDTH),
 			Y: int32(SELECTOR_POS[i].Y * SELECTOR_CELL_SIZE),
@@ -143,13 +143,13 @@ func renderSelector(renderer *sdl.Renderer, clientId, shapeId int) {
 	}
 }
 
-func renderRotator(renderer *sdl.Renderer, clientId, shapeId, rotation int) {
+func renderRotator(renderer *sdl.Renderer, clientPlayer, shapeId, rotation int) {
 	rotations := squares.AvailableRotations(shapeId)
 	for i := 0; i < squares.NROTATIONS; i++ {
 		if rotations&(1<<i) == 0 {
 			continue
 		}
-		setColorForShape(renderer, i, clientId, i == rotation)
+		setColorForShape(renderer, i, clientPlayer, i == rotation)
 		base := sdl.Rect{
 			X: int32((i%4*ROTATOR_WIDTH+2)*ROTATOR_CELL_SIZE + BOARD_AREA_WIDTH),
 			Y: int32(WINDOW_HEIGHT - ((2-i/4)*ROTATOR_WIDTH+1)*ROTATOR_CELL_SIZE),
@@ -167,6 +167,9 @@ func shouldRenderGhost(topleft sdl.Rect, shapeId, rotation int) bool {
 	return x && y
 }
 
+func clientNetThread(ch chan<- any) {
+}
+
 func clientMain() {
 	if err := sdl.Init(sdl.INIT_VIDEO); err != nil {
 		panic(err)
@@ -179,8 +182,11 @@ func clientMain() {
 	}
 	defer renderer.Destroy()
 	defer window.Destroy()
-
 	window.SetTitle("Squares")
+
+	if !fLocalMultiplayer {
+		go clientNetThread(nil)
+	}
 
 	// Initialize data
 	game.Reset()
@@ -233,7 +239,7 @@ func clientMain() {
 					rotation = squares.GetNextRotation(shapeId, rotation)
 				}
 			case *sdl.MouseButtonEvent:
-				if event.Type != sdl.MOUSEBUTTONDOWN || game.ActivePlayer != clientId {
+				if event.Type != sdl.MOUSEBUTTONDOWN || game.ActivePlayer != clientPlayer {
 					break
 				}
 				if event.Button == sdl.BUTTON_LEFT {
@@ -242,14 +248,14 @@ func clientMain() {
 						gridCursor.X = event.X / GRID_CELL_SIZE * GRID_CELL_SIZE
 						gridCursor.Y = event.Y / GRID_CELL_SIZE * GRID_CELL_SIZE
 						insertPos := squares.Coord{int(gridCursor.X / GRID_CELL_SIZE), int(gridCursor.Y / GRID_CELL_SIZE)}
-						if game.TryInsert(shapeId, rotation, insertPos, clientId, game.FirstRound) {
-							game.Insert(shapeId, rotation, insertPos, clientId)
+						if game.TryInsert(shapeId, rotation, insertPos, clientPlayer, game.FirstRound) {
+							game.Insert(shapeId, rotation, insertPos, clientPlayer)
 							if !game.AfterMove() {
 								fmt.Println("Game over!")
 								break
 							}
 							if fLocalMultiplayer {
-								clientId = game.ActivePlayer
+								clientPlayer = game.ActivePlayer
 							}
 						}
 					} else if event.Y < SELECTOR_AREA_HEIGHT {
@@ -303,8 +309,8 @@ func clientMain() {
 		// Draw grid ghost color
 		if mouseActive && mouseHover && shouldRenderGhost(gridCursorGhost, shapeId, rotation) {
 			var useColor sdl.Color
-			if game.TryInsert(shapeId, rotation, squares.Coord{int(gridCursorGhost.X / GRID_CELL_SIZE), int(gridCursorGhost.Y / GRID_CELL_SIZE)}, clientId, game.FirstRound) {
-				useColor = GRID_CURSOR_GHOST_COLORS[clientId]
+			if game.TryInsert(shapeId, rotation, squares.Coord{int(gridCursorGhost.X / GRID_CELL_SIZE), int(gridCursorGhost.Y / GRID_CELL_SIZE)}, clientPlayer, game.FirstRound) {
+				useColor = GRID_CURSOR_GHOST_COLORS[clientPlayer]
 			} else {
 				useColor = GRID_WRONG_COLOR
 			}
@@ -312,8 +318,8 @@ func clientMain() {
 			renderShape(renderer, shapeId, rotation, gridCursorGhost, GRID_CELL_SIZE, GRID_CELL_SIZE)
 		}
 
-		renderSelector(renderer, clientId, shapeId)
-		renderRotator(renderer, clientId, shapeId, rotation)
+		renderSelector(renderer, clientPlayer, shapeId)
+		renderRotator(renderer, clientPlayer, shapeId, rotation)
 		renderBoard(renderer)
 		renderer.Present()
 	}

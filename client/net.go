@@ -34,10 +34,9 @@ type ConnectReq struct {
 }
 
 type ConnectRes struct {
-	Id           int          `json:"id"`        // Empty Id: Auth failure
-	PlayerId     int          `json:"player_id"` // Range: 0-3
-	Game         squares.Game `json:"game"`
-	ActivePlayer int          `json:"active_player"`
+	Id       int          `json:"id"`        // Empty Id: Auth failure
+	PlayerId int          `json:"player_id"` // Range: 0-3
+	Game     squares.Game `json:"game"`
 }
 
 type MoveReq struct {

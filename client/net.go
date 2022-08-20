@@ -23,6 +23,7 @@ const (
 	MOVE_REQ       = 3
 	MOVE_RES       = 4
 	OTHER_MOVE_RES = 5
+	SERVER_RES     = 6 // Generic server message
 )
 
 // Connect and retrieve game information

@@ -70,6 +70,9 @@ func serverGame(chCI <-chan ClientInfo) {
 					Game:     *game,
 				}
 			case MoveReq:
+				if !gameOngoing {
+					break
+				}
 				if num == game.ActivePlayer {
 					pos := squares.Coord{req.Pos[0], req.Pos[1]}
 					if !game.TryInsert(req.ShapeId, req.Rotation, pos, num, game.FirstRound) {
@@ -95,7 +98,6 @@ func serverGame(chCI <-chan ClientInfo) {
 							ActivePlayer: game.ActivePlayer,
 						})
 					}
-				} else {
 				}
 			default:
 				log.Printf("Unknown message type: %T\n", req)

@@ -14,8 +14,8 @@ const (
 // The state of a game board
 type Game struct {
 	// Board[y][x] is the grid at Coord(x, y)
-	Board     [squares.BOARD_HEIGHT][squares.BOARD_WIDTH]int `json:"board"`
-	ChessUsed [squares.NPLAYERS][squares.NSHAPES]bool        `json:"chess_used"`
+	Board     [BOARD_HEIGHT][BOARD_WIDTH]int `json:"board"`
+	ChessUsed [NPLAYERS][NSHAPES]bool        `json:"chess_used"`
 
 	ActivePlayer int  `json:"active_player"` // Who's next, -1 = game over
 	FirstRound   bool `json:"first_round"`

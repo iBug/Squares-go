@@ -6,7 +6,6 @@ import (
 	"log"
 	"math"
 	"net"
-	"unsafe"
 
 	squares "github.com/iBug/Squares-go"
 	"github.com/veandco/go-sdl2/sdl"
@@ -173,32 +172,24 @@ func shouldRenderGhost(topleft sdl.Rect, shapeId, rotation int) bool {
 	return x && y
 }
 
-func clientNetThread(conn net.Conn, windowId uint32) {
+func clientNetThread(conn net.Conn, windowId uint32, chEvent chan<- any) {
 	defer conn.Close()
 	for {
 		msg, err := RecvMsg(conn)
 		if err != nil {
 			log.Fatal(err)
 		}
-		m, _ := msg.(ConnectRes)
-		sdl.PushEvent(&sdl.UserEvent{
-			Type:      serverMsgEventType,
-			Timestamp: sdl.GetTicks(),
-			WindowID:  windowId,
-			Code:      0,
-			Data1:     unsafe.Pointer(&m),
-			Data2:     nil,
-		})
+		chEvent <- msg
 	}
 }
 
-func setupClientNetThread(window *sdl.Window) error {
+func setupClientNetThread(window *sdl.Window, chEvent chan<- any) error {
 	conn, err := net.Dial("tcp", fServerAddr)
 	if err != nil {
 		return err
 	}
 	windowID, _ := window.GetID()
-	go clientNetThread(conn, windowID)
+	go clientNetThread(conn, windowID, chEvent)
 	return SendMsg(conn, ConnectReq{})
 }
 
@@ -216,12 +207,18 @@ func clientMain() {
 	defer window.Destroy()
 	window.SetTitle("Squares")
 
+	chEvent := make(chan any)
 	if !fLocalMultiplayer {
-		err := setupClientNetThread(window)
+		err := setupClientNetThread(window, chEvent)
 		if err != nil {
 			panic(err)
 		}
 	}
+	go func() {
+		for {
+			chEvent <- sdl.WaitEvent()
+		}
+	}()
 
 	// Initialize data
 	game.Reset()
@@ -247,7 +244,8 @@ func clientMain() {
 
 	nextTime := sdl.GetTicks64()
 	for !quit {
-		for e := sdl.WaitEvent(); e != nil; e = sdl.PollEvent() {
+		select {
+		case e := <-chEvent:
 			switch event := e.(type) {
 			case *sdl.KeyboardEvent:
 				if event.State != sdl.PRESSED {
@@ -316,33 +314,26 @@ func clientMain() {
 				} else if event.Event == sdl.WINDOWEVENT_LEAVE {
 					mouseHover = false
 				}
-			case *sdl.UserEvent:
-				fmt.Println(event)
-				if event.Type != serverMsgEventType {
-					break
-				}
-				serverMsg := *(*any)(event.Data1)
-				switch msg := serverMsg.(type) {
-				case ConnectRes:
-					if msg.Id == 0 {
-						log.Fatal("Connection failed")
-						break
-					}
-					game = &msg.Game
-					clientId = msg.Id
-					clientPlayer = msg.PlayerId
-				case MoveRes:
-					break
-				case OtherMoveRes:
-					pos := squares.Coord{msg.Pos[0], msg.Pos[1]}
-					game.Insert(msg.ShapeId, msg.Rotation, pos, msg.PlayerId)
-					game.ActivePlayer = msg.ActivePlayer
-				default:
-					log.Printf("Unknown message <%T>\n", msg)
-				}
 			case *sdl.QuitEvent:
 				quit = true
+
+			case ConnectRes:
+				if event.Id == 0 {
+					log.Fatal("Connection failed")
+					break
+				}
+				game = &event.Game
+				clientId = event.Id
+				clientPlayer = event.PlayerId
+			case MoveRes:
+				break
+			case OtherMoveRes:
+				pos := squares.Coord{event.Pos[0], event.Pos[1]}
+				game.Insert(event.ShapeId, event.Rotation, pos, event.PlayerId)
+				game.ActivePlayer = event.ActivePlayer
 			}
+		default:
+			// Non-blocking tests for events
 		}
 
 		// Draw grid background

@@ -59,14 +59,6 @@ func parseFlags() {
 	}
 }
 
-func timeLeft(nextTime uint32) uint32 {
-	now := sdl.GetTicks()
-	if now < nextTime {
-		return nextTime - now
-	}
-	return 0
-}
-
 func getSelection(x, y int) int {
 	for i := 0; i < squares.NSHAPES; i++ {
 		startX := SELECTOR_POS[i].X*SELECTOR_CELL_SIZE + BOARD_AREA_WIDTH
@@ -213,11 +205,6 @@ func clientMain() {
 			panic(err)
 		}
 	}
-	go func() {
-		for {
-			chEvent <- sdl.WaitEvent()
-		}
-	}()
 
 	// Initialize data
 	game.Reset()
@@ -241,10 +228,9 @@ func clientMain() {
 		H: GRID_CELL_SIZE,
 	}
 
-	nextTime := sdl.GetTicks()
+	nextTime := sdl.GetTicks64()
 	for !quit {
-		select {
-		case e := <-chEvent:
+		for e := sdl.PollEvent(); e != nil; e = sdl.PollEvent() {
 			switch event := e.(type) {
 			case *sdl.KeyboardEvent:
 				if event.State != sdl.PRESSED {
@@ -322,34 +308,46 @@ func clientMain() {
 				}
 			case *sdl.QuitEvent:
 				quit = true
-
-			case ConnectRes:
-				if event.Id == 0 {
-					log.Fatal("Connection failed")
-					break
-				}
-				game = &event.Game
-				clientId = event.Id
-				clientPlayer = event.PlayerId
-				window.SetTitle(fmt.Sprintf("Squares (Player %d)", clientPlayer))
-			case MoveRes:
-				break
-			case OtherMoveRes:
-				pos := squares.Coord{event.Pos[0], event.Pos[1]}
-				game.Insert(event.ShapeId, event.Rotation, pos, event.PlayerId)
-				game.ActivePlayer = event.ActivePlayer
-				if event.PlayerId == squares.NPLAYERS-1 {
-					game.FirstRound = false
-				}
 			}
-		default:
-			// Non-blocking tests for events
+		}
+
+	MsgLoop:
+		for {
+			select {
+			case msg := <-chEvent:
+				switch event := msg.(type) {
+				case ConnectRes:
+					if event.Id == 0 {
+						log.Fatal("Connection failed")
+						break
+					}
+					game = &event.Game
+					clientId = event.Id
+					clientPlayer = event.PlayerId
+					window.SetTitle(fmt.Sprintf("Squares (Player %d)", clientPlayer))
+				case MoveRes:
+					break
+				case OtherMoveRes:
+					pos := squares.Coord{event.Pos[0], event.Pos[1]}
+					game.Insert(event.ShapeId, event.Rotation, pos, event.PlayerId)
+					game.ActivePlayer = event.ActivePlayer
+					if event.PlayerId == squares.NPLAYERS-1 {
+						game.FirstRound = false
+					}
+				}
+			default:
+				// Non-blocking tests for events
+				break MsgLoop
+			}
 		}
 
 		// Draw grid background
 		renderer.SetDrawColor(GRID_BACKGROUND.R, GRID_BACKGROUND.G, GRID_BACKGROUND.B, GRID_BACKGROUND.A)
-		sdl.Delay(timeLeft(nextTime))
-		nextTime = sdl.GetTicks() + uint32(math.Round(INTERVAL))
+		sdlNow := sdl.GetTicks64()
+		if sdlNow < nextTime {
+			sdl.Delay(uint32(nextTime - sdlNow))
+			nextTime += uint64(math.Round(INTERVAL))
+		}
 		renderer.Clear()
 
 		// Draw grid lines

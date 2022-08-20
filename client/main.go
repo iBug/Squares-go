@@ -346,7 +346,7 @@ func clientMain() {
 		sdlNow := sdl.GetTicks64()
 		if sdlNow < nextTime {
 			sdl.Delay(uint32(nextTime - sdlNow))
-			nextTime += uint64(math.Round(INTERVAL))
+			nextTime = sdlNow + uint64(math.Round(INTERVAL))
 		}
 		renderer.Clear()
 

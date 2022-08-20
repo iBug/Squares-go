@@ -52,10 +52,11 @@ type MoveRes struct {
 }
 
 type OtherMoveRes struct {
-	PlayerId int    `json:"player_id"` // Who made the move
-	ShapeId  int    `json:"shape"`
-	Pos      [2]int `json:"pos"`
-	Rotation int    `json:"rotation"`
+	PlayerId     int    `json:"player_id"` // Who made the move
+	ShapeId      int    `json:"shape"`
+	Pos          [2]int `json:"pos"`
+	Rotation     int    `json:"rotation"`
+	ActivePlayer int    `json:"active_player"`
 }
 
 func SendMsg(w io.Writer, message any) error {
@@ -107,18 +108,27 @@ func RecvMsg(r io.Reader) (any, error) {
 	var message any
 	switch msgType {
 	case CONNECT_REQ:
-		message = ConnectReq{}
+		m := ConnectReq{}
+		err = json.Unmarshal(data, &m)
+		message = m
 	case CONNECT_RES:
-		message = ConnectRes{}
+		m := ConnectRes{}
+		err = json.Unmarshal(data, &m)
+		message = m
 	case MOVE_REQ:
-		message = MoveReq{}
+		m := MoveReq{}
+		err = json.Unmarshal(data, &m)
+		message = m
 	case MOVE_RES:
-		message = MoveRes{}
+		m := MoveRes{}
+		err = json.Unmarshal(data, &m)
+		message = m
 	case OTHER_MOVE_RES:
-		message = OtherMoveRes{}
+		m := OtherMoveRes{}
+		err = json.Unmarshal(data, &m)
+		message = m
 	default:
 		return nil, fmt.Errorf("not implemented: %d", msgType)
 	}
-	err = json.Unmarshal(data, &message)
 	return message, err
 }

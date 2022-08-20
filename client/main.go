@@ -3,7 +3,10 @@ package main
 import (
 	"flag"
 	"fmt"
+	"log"
 	"math"
+	"net"
+	"unsafe"
 
 	squares "github.com/iBug/Squares-go"
 	"github.com/veandco/go-sdl2/sdl"
@@ -35,7 +38,10 @@ var (
 
 var (
 	game         = squares.NewGame()
+	clientId     = 0
 	clientPlayer = 0 // which player this client represents
+
+	serverMsgEventType = sdl.RegisterEvents(1)
 
 	fServerAddr       = ""
 	fIsServer         = false
@@ -167,11 +173,37 @@ func shouldRenderGhost(topleft sdl.Rect, shapeId, rotation int) bool {
 	return x && y
 }
 
-func clientNetThread(ch chan<- any) {
+func clientNetThread(conn net.Conn, windowId uint32) {
+	defer conn.Close()
+	for {
+		msg, err := RecvMsg(conn)
+		if err != nil {
+			log.Fatal(err)
+		}
+		m, _ := msg.(ConnectRes)
+		sdl.PushEvent(&sdl.UserEvent{
+			Type:      serverMsgEventType,
+			Timestamp: sdl.GetTicks(),
+			WindowID:  windowId,
+			Code:      0,
+			Data1:     unsafe.Pointer(&m),
+			Data2:     nil,
+		})
+	}
+}
+
+func setupClientNetThread(window *sdl.Window) error {
+	conn, err := net.Dial("tcp", fServerAddr)
+	if err != nil {
+		return err
+	}
+	windowID, _ := window.GetID()
+	go clientNetThread(conn, windowID)
+	return SendMsg(conn, ConnectReq{})
 }
 
 func clientMain() {
-	if err := sdl.Init(sdl.INIT_VIDEO); err != nil {
+	if err := sdl.Init(sdl.INIT_VIDEO | sdl.INIT_EVENTS); err != nil {
 		panic(err)
 	}
 	defer sdl.Quit()
@@ -185,7 +217,10 @@ func clientMain() {
 	window.SetTitle("Squares")
 
 	if !fLocalMultiplayer {
-		go clientNetThread(nil)
+		err := setupClientNetThread(window)
+		if err != nil {
+			panic(err)
+		}
 	}
 
 	// Initialize data
@@ -212,7 +247,7 @@ func clientMain() {
 
 	nextTime := sdl.GetTicks64()
 	for !quit {
-		for e := sdl.PollEvent(); e != nil; e = sdl.PollEvent() {
+		for e := sdl.WaitEvent(); e != nil; e = sdl.PollEvent() {
 			switch event := e.(type) {
 			case *sdl.KeyboardEvent:
 				if event.State != sdl.PRESSED {
@@ -280,6 +315,30 @@ func clientMain() {
 					mouseHover = true
 				} else if event.Event == sdl.WINDOWEVENT_LEAVE {
 					mouseHover = false
+				}
+			case *sdl.UserEvent:
+				fmt.Println(event)
+				if event.Type != serverMsgEventType {
+					break
+				}
+				serverMsg := *(*any)(event.Data1)
+				switch msg := serverMsg.(type) {
+				case ConnectRes:
+					if msg.Id == 0 {
+						log.Fatal("Connection failed")
+						break
+					}
+					game = &msg.Game
+					clientId = msg.Id
+					clientPlayer = msg.PlayerId
+				case MoveRes:
+					break
+				case OtherMoveRes:
+					pos := squares.Coord{msg.Pos[0], msg.Pos[1]}
+					game.Insert(msg.ShapeId, msg.Rotation, pos, msg.PlayerId)
+					game.ActivePlayer = msg.ActivePlayer
+				default:
+					log.Printf("Unknown message <%T>\n", msg)
 				}
 			case *sdl.QuitEvent:
 				quit = true

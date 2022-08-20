@@ -4,7 +4,6 @@ import (
 	"log"
 	"math/rand"
 	"net"
-	"sync/atomic"
 	"time"
 
 	squares "github.com/iBug/Squares-go"
@@ -25,7 +24,7 @@ const IDRANGE = 1 << 30
 var (
 	waitingRoom []ClientInfo
 	wrCount     int
-	gameOngoing atomic.Bool
+	gameOngoing = false
 
 	r1 = rand.New(rand.NewSource(time.Now().UnixNano()))
 )
@@ -41,25 +40,26 @@ func handleClient(num int, ci ClientInfo, ch chan<- ClientMessage) {
 	}
 }
 
-func serverGame(ch <-chan ClientInfo) {
-	for wrCount < squares.NPLAYERS {
-		ci := <-ch
-		waitingRoom[wrCount] = ci
-		wrCount++
-	}
+func serverGame(chCI <-chan ClientInfo) {
+	chCM := make(chan ClientMessage)
 
-	cm := make(chan ClientMessage)
-	for i := range waitingRoom {
-		go handleClient(i, waitingRoom[i], cm)
-	}
-	resetWaitingRoom()
-
-	gameOngoing.Store(true)
-	game.Reset()
 	// GameLoop:
 	for {
 		select {
-		case cm := <-cm:
+		case ci := <-chCI:
+			if gameOngoing {
+				log.Printf("Client %d connected while game ongoing\n", ci.id)
+				ci.conn.Close()
+				break
+			}
+			waitingRoom[wrCount] = ci
+			go handleClient(wrCount, waitingRoom[wrCount], chCM)
+			wrCount++
+			if wrCount == squares.NPLAYERS {
+				gameOngoing = true
+				game.Reset()
+			}
+		case cm := <-chCM:
 			num := cm.num
 			var res any
 			switch req := cm.m.(type) {
@@ -87,9 +87,6 @@ func serverGame(ch <-chan ClientInfo) {
 					}
 
 					for i := 0; i < squares.NPLAYERS; i++ {
-						if i == num {
-							continue
-						}
 						SendMsg(waitingRoom[i].conn, OtherMoveRes{
 							PlayerId: num,
 							ShapeId:  req.ShapeId,
@@ -99,11 +96,12 @@ func serverGame(ch <-chan ClientInfo) {
 					}
 				} else {
 				}
+			default:
+				log.Printf("Unknown message type: %T\n", req)
 			}
 			SendMsg(waitingRoom[num].conn, res)
 		}
 	}
-	defer gameOngoing.Store(false)
 }
 
 func resetWaitingRoom() {

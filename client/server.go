@@ -88,10 +88,11 @@ func serverGame(chCI <-chan ClientInfo) {
 
 					for i := 0; i < squares.NPLAYERS; i++ {
 						SendMsg(waitingRoom[i].conn, OtherMoveRes{
-							PlayerId: num,
-							ShapeId:  req.ShapeId,
-							Pos:      req.Pos,
-							Rotation: req.Rotation,
+							PlayerId:     num,
+							ShapeId:      req.ShapeId,
+							Pos:          req.Pos,
+							Rotation:     req.Rotation,
+							ActivePlayer: game.ActivePlayer,
 						})
 					}
 				} else {

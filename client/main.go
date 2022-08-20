@@ -40,8 +40,6 @@ var (
 	clientId     = 0
 	clientPlayer = 0 // which player this client represents
 
-	serverMsgEventType = sdl.RegisterEvents(1)
-
 	fServerAddr       = ""
 	fIsServer         = false
 	fLocalMultiplayer = false
@@ -183,14 +181,14 @@ func clientNetThread(conn net.Conn, windowId uint32, chEvent chan<- any) {
 	}
 }
 
-func setupClientNetThread(window *sdl.Window, chEvent chan<- any) error {
+func setupClientNetThread(window *sdl.Window, chEvent chan<- any) (net.Conn, error) {
 	conn, err := net.Dial("tcp", fServerAddr)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	windowID, _ := window.GetID()
 	go clientNetThread(conn, windowID, chEvent)
-	return SendMsg(conn, ConnectReq{})
+	return conn, SendMsg(conn, ConnectReq{})
 }
 
 func clientMain() {
@@ -208,8 +206,9 @@ func clientMain() {
 	window.SetTitle("Squares")
 
 	chEvent := make(chan any)
+	var conn net.Conn
 	if !fLocalMultiplayer {
-		err := setupClientNetThread(window, chEvent)
+		conn, err = setupClientNetThread(window, chEvent)
 		if err != nil {
 			panic(err)
 		}
@@ -282,13 +281,20 @@ func clientMain() {
 						gridCursor.Y = event.Y / GRID_CELL_SIZE * GRID_CELL_SIZE
 						insertPos := squares.Coord{int(gridCursor.X / GRID_CELL_SIZE), int(gridCursor.Y / GRID_CELL_SIZE)}
 						if game.TryInsert(shapeId, rotation, insertPos, clientPlayer, game.FirstRound) {
-							game.Insert(shapeId, rotation, insertPos, clientPlayer)
-							if !game.AfterMove() {
-								fmt.Println("Game over!")
-								break
-							}
 							if fLocalMultiplayer {
+								game.Insert(shapeId, rotation, insertPos, clientPlayer)
+								if !game.AfterMove() {
+									fmt.Println("Game over!")
+									break
+								}
 								clientPlayer = game.ActivePlayer
+							} else {
+								SendMsg(conn, MoveReq{
+									Id:       clientId,
+									ShapeId:  shapeId,
+									Pos:      [2]int{insertPos.X, insertPos.Y},
+									Rotation: rotation,
+								})
 							}
 						}
 					} else if event.Y < SELECTOR_AREA_HEIGHT {
@@ -325,12 +331,16 @@ func clientMain() {
 				game = &event.Game
 				clientId = event.Id
 				clientPlayer = event.PlayerId
+				window.SetTitle(fmt.Sprintf("Squares (Player %d)", clientPlayer))
 			case MoveRes:
 				break
 			case OtherMoveRes:
 				pos := squares.Coord{event.Pos[0], event.Pos[1]}
 				game.Insert(event.ShapeId, event.Rotation, pos, event.PlayerId)
 				game.ActivePlayer = event.ActivePlayer
+				if event.PlayerId == squares.NPLAYERS-1 {
+					game.FirstRound = false
+				}
 			}
 		default:
 			// Non-blocking tests for events

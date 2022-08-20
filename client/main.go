@@ -59,10 +59,10 @@ func parseFlags() {
 	}
 }
 
-func timeLeft(nextTime uint64) uint32 {
-	now := sdl.GetTicks64()
+func timeLeft(nextTime uint32) uint32 {
+	now := sdl.GetTicks()
 	if now < nextTime {
-		return uint32(nextTime - now)
+		return nextTime - now
 	}
 	return 0
 }
@@ -241,7 +241,7 @@ func clientMain() {
 		H: GRID_CELL_SIZE,
 	}
 
-	nextTime := sdl.GetTicks64()
+	nextTime := sdl.GetTicks()
 	for !quit {
 		select {
 		case e := <-chEvent:
@@ -349,7 +349,7 @@ func clientMain() {
 		// Draw grid background
 		renderer.SetDrawColor(GRID_BACKGROUND.R, GRID_BACKGROUND.G, GRID_BACKGROUND.B, GRID_BACKGROUND.A)
 		sdl.Delay(timeLeft(nextTime))
-		nextTime = sdl.GetTicks64() + uint64(math.Round(INTERVAL))
+		nextTime = sdl.GetTicks() + uint32(math.Round(INTERVAL))
 		renderer.Clear()
 
 		// Draw grid lines

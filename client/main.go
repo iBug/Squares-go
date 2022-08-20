@@ -170,6 +170,11 @@ func clientNetThread(conn net.Conn, windowId uint32, chEvent chan<- any) {
 			log.Fatal(err)
 		}
 		chEvent <- msg
+		sdl.PushEvent(&sdl.UserEvent{
+			Type:      sdl.USEREVENT,
+			Timestamp: sdl.GetTicks(),
+			WindowID:  windowId,
+		})
 	}
 }
 
@@ -197,7 +202,7 @@ func clientMain() {
 	defer window.Destroy()
 	window.SetTitle("Squares")
 
-	chEvent := make(chan any)
+	chEvent := make(chan any, 8)
 	var conn net.Conn
 	if !fLocalMultiplayer {
 		conn, err = setupClientNetThread(window, chEvent)
@@ -230,7 +235,7 @@ func clientMain() {
 
 	nextTime := sdl.GetTicks64()
 	for !quit {
-		for e := sdl.PollEvent(); e != nil; e = sdl.PollEvent() {
+		for e := sdl.WaitEvent(); e != nil; e = sdl.PollEvent() {
 			switch event := e.(type) {
 			case *sdl.KeyboardEvent:
 				if event.State != sdl.PRESSED {
@@ -308,14 +313,9 @@ func clientMain() {
 				}
 			case *sdl.QuitEvent:
 				quit = true
-			}
-		}
 
-	MsgLoop:
-		for {
-			select {
-			case msg := <-chEvent:
-				switch event := msg.(type) {
+			case *sdl.UserEvent:
+				switch event := (<-chEvent).(type) {
 				case ConnectRes:
 					if event.Id == 0 {
 						log.Fatal("Connection failed")
@@ -324,7 +324,7 @@ func clientMain() {
 					game = &event.Game
 					clientId = event.Id
 					clientPlayer = event.PlayerId
-					window.SetTitle(fmt.Sprintf("Squares (Player %d)", clientPlayer))
+					window.SetTitle(fmt.Sprintf("Squares (Player %d)", clientPlayer+1))
 				case MoveRes:
 					break
 				case OtherMoveRes:
@@ -335,9 +335,6 @@ func clientMain() {
 						game.FirstRound = false
 					}
 				}
-			default:
-				// Non-blocking tests for events
-				break MsgLoop
 			}
 		}
 

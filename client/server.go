@@ -22,14 +22,16 @@ type ClientMessage struct {
 const IDRANGE = 1 << 30
 
 var (
-	waitingRoom []ClientInfo
-	wrCount     int
+	waitingRoom []*ClientInfo
+	gamePlayers [4]*ClientInfo
 	gameOngoing = false
 
 	r1 = rand.New(rand.NewSource(time.Now().UnixNano()))
 )
 
-func handleClient(num int, ci ClientInfo, ch chan<- ClientMessage) {
+func handleClient(num int, ci *ClientInfo, ch chan<- ClientMessage) {
+	defer ci.conn.Close()
+	defer close(ch)
 	for {
 		msg, err := RecvMsg(ci.conn)
 		if err != nil {
@@ -40,7 +42,7 @@ func handleClient(num int, ci ClientInfo, ch chan<- ClientMessage) {
 	}
 }
 
-func serverGame(chCI <-chan ClientInfo) {
+func serverGame(chCI <-chan *ClientInfo) {
 	chCM := make(chan ClientMessage)
 
 	// GameLoop:
@@ -52,11 +54,13 @@ func serverGame(chCI <-chan ClientInfo) {
 				ci.conn.Close()
 				break
 			}
-			waitingRoom[wrCount] = ci
+			wrCount := len(waitingRoom)
+			waitingRoom = append(waitingRoom, ci)
 			go handleClient(wrCount, waitingRoom[wrCount], chCM)
 			wrCount++
 			if wrCount == squares.NPLAYERS {
 				gameOngoing = true
+				copy(gamePlayers[:], waitingRoom[:4])
 				game.Reset()
 			}
 		case cm := <-chCM:
@@ -108,8 +112,7 @@ func serverGame(chCI <-chan ClientInfo) {
 }
 
 func resetWaitingRoom() {
-	waitingRoom = make([]ClientInfo, squares.NPLAYERS)
-	wrCount = 0
+	waitingRoom = make([]*ClientInfo, 0, 2*squares.NPLAYERS)
 }
 
 func serverMain() {
@@ -122,8 +125,9 @@ func serverMain() {
 	defer ln.Close()
 	log.Printf("Server listening on %s\n", ln.Addr())
 
-	ch := make(chan ClientInfo, 1)
+	ch := make(chan *ClientInfo, 1)
 	go serverGame(ch)
+	defer close(ch)
 
 	for {
 		conn, err := ln.Accept()
@@ -132,9 +136,6 @@ func serverMain() {
 			conn.Close()
 			continue
 		}
-		ch <- ClientInfo{
-			id:   r1.Intn(IDRANGE) + 1,
-			conn: conn,
-		}
+		ch <- &ClientInfo{conn: conn}
 	}
 }

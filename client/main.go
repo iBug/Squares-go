@@ -61,11 +61,12 @@ func parseFlags() {
 
 func getSelection(x, y int) int {
 	for i := 0; i < squares.NSHAPES; i++ {
+		shape := squares.GetShape(i, 0)
 		startX := SELECTOR_POS[i].X*SELECTOR_CELL_SIZE + BOARD_AREA_WIDTH
-		endX := startX + squares.GetShape(i, 0).Width*SELECTOR_CELL_SIZE
+		endX := startX + shape.Width*SELECTOR_CELL_SIZE
 		startY := SELECTOR_POS[i].Y * SELECTOR_CELL_SIZE
-		endY := startY + squares.GetShape(i, 0).Height*SELECTOR_CELL_SIZE
-		if x >= startX && x <= endX && y >= startY && y <= endY {
+		endY := startY + shape.Height*SELECTOR_CELL_SIZE
+		if x >= startX && x < endX && y >= startY && y < endY {
 			return i
 		}
 	}
@@ -78,11 +79,12 @@ func getRotation(x, y, shapeId int) int {
 		if rotations&(1<<i) == 0 {
 			continue
 		}
+		shape := squares.GetShape(shapeId, i)
 		startX := (i%4*ROTATOR_WIDTH+2)*ROTATOR_CELL_SIZE + BOARD_AREA_WIDTH
-		endX := startX + squares.GetShape(shapeId, i).Width*ROTATOR_CELL_SIZE
+		endX := startX + shape.Width*ROTATOR_CELL_SIZE
 		startY := WINDOW_HEIGHT - ((2-i/4)*ROTATOR_WIDTH+1)*ROTATOR_CELL_SIZE
-		endY := startY + squares.GetShape(shapeId, i).Height*ROTATOR_CELL_SIZE
-		if x >= startX && x <= endX && y >= startY && y <= endY {
+		endY := startY + shape.Height*ROTATOR_CELL_SIZE
+		if x >= startX && x < endX && y >= startY && y < endY {
 			return i
 		}
 	}
@@ -103,11 +105,11 @@ func renderBoard(renderer *sdl.Renderer) {
 }
 
 // Extracted common code from renderSelection and renderRotator
-func setColorForShape(renderer *sdl.Renderer, shapeId, playerId int, useGhostColor bool) {
+func setColorForShape(renderer *sdl.Renderer, shapeId int, useGhostColor bool) {
 	var gridColor sdl.Color
-	if game.GetUsed(playerId, shapeId) {
+	if game.GetUsed(clientPlayer, shapeId) {
 		gridColor = GRID_WRONG_COLOR
-	} else if game.ActivePlayer == playerId && useGhostColor {
+	} else if game.ActivePlayer == clientPlayer && useGhostColor {
 		gridColor = GRID_CURSOR_GHOST_COLORS[clientPlayer]
 	} else {
 		gridColor = GRID_CURSOR_COLORS[clientPlayer]
@@ -127,7 +129,7 @@ func renderShape(renderer *sdl.Renderer, shapeId, rotation int, topleft sdl.Rect
 
 func renderSelector(renderer *sdl.Renderer, clientPlayer, shapeId int) {
 	for i := 0; i < squares.NSHAPES; i++ {
-		setColorForShape(renderer, i, clientPlayer, i == shapeId)
+		setColorForShape(renderer, i, i == shapeId)
 		base := sdl.Rect{
 			X: int32(SELECTOR_POS[i].X*SELECTOR_CELL_SIZE + BOARD_AREA_WIDTH),
 			Y: int32(SELECTOR_POS[i].Y * SELECTOR_CELL_SIZE),
@@ -144,7 +146,7 @@ func renderRotator(renderer *sdl.Renderer, clientPlayer, shapeId, rotation int) 
 		if rotations&(1<<i) == 0 {
 			continue
 		}
-		setColorForShape(renderer, i, clientPlayer, i == rotation)
+		setColorForShape(renderer, i, i == rotation)
 		base := sdl.Rect{
 			X: int32((i%4*ROTATOR_WIDTH+2)*ROTATOR_CELL_SIZE + BOARD_AREA_WIDTH),
 			Y: int32(WINDOW_HEIGHT - ((2-i/4)*ROTATOR_WIDTH+1)*ROTATOR_CELL_SIZE),
@@ -275,7 +277,7 @@ func clientMain() {
 							if fLocalMultiplayer {
 								game.Insert(shapeId, rotation, insertPos, clientPlayer)
 								if !game.AfterMove() {
-									fmt.Println("Game over!")
+									log.Println("Game over!")
 									break
 								}
 								clientPlayer = game.ActivePlayer
@@ -322,9 +324,12 @@ func clientMain() {
 						break
 					}
 					game = &event.Game
+					if clientId != event.Id {
+						log.Printf("New client ID: %d\n", event.Id)
+						window.SetTitle(fmt.Sprintf("Squares (Player %d)", event.PlayerId+1))
+					}
 					clientId = event.Id
 					clientPlayer = event.PlayerId
-					window.SetTitle(fmt.Sprintf("Squares (Player %d)", clientPlayer+1))
 				case MoveRes:
 					break
 				case OtherMoveRes:

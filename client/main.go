@@ -175,7 +175,7 @@ func clientNetThread(conn net.Conn, windowId uint32, chEvent chan<- any) {
 		chEvent <- msg
 		sdl.PushEvent(&sdl.UserEvent{
 			Type:      sdl.USEREVENT,
-			Timestamp: sdl.GetTicks(),
+			Timestamp: sdl.GetTicks(), //lint:ignore SA1019 compat
 			WindowID:  windowId,
 		})
 	}

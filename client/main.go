@@ -50,6 +50,7 @@ func parseFlags() {
 	flag.StringVar(&fServerAddr, "a", "", "server address")
 	flag.BoolVar(&fUseDarkTheme, "d", false, "use dark theme")
 	flag.BoolVar(&fIsServer, "s", false, "run as server")
+	flag.IntVar(&clientId, "i", 0, "client id (for reconnection)")
 	flag.Parse()
 
 	fLocalMultiplayer = fServerAddr == ""
@@ -187,7 +188,7 @@ func setupClientNetThread(window *sdl.Window, chEvent chan<- any) (net.Conn, err
 	}
 	windowID, _ := window.GetID()
 	go clientNetThread(conn, windowID, chEvent)
-	return conn, SendMsg(conn, ConnectReq{})
+	return conn, SendMsg(conn, ConnectReq{Id: clientId})
 }
 
 func clientMain() {
@@ -202,7 +203,7 @@ func clientMain() {
 	}
 	defer renderer.Destroy()
 	defer window.Destroy()
-	window.SetTitle("Squares")
+	window.SetTitle(fmt.Sprintf("Squares (Player %d)", clientPlayer+1))
 
 	chEvent := make(chan any, 8)
 	var conn net.Conn
@@ -325,11 +326,14 @@ func clientMain() {
 					}
 					game = &event.Game
 					if clientId != event.Id {
-						log.Printf("New client ID: %d\n", event.Id)
-						window.SetTitle(fmt.Sprintf("Squares (Player %d)", event.PlayerId+1))
+						log.Printf("Updated client ID: %d\n", event.Id)
+						clientId = event.Id
 					}
-					clientId = event.Id
-					clientPlayer = event.PlayerId
+					if clientPlayer != event.PlayerId {
+						log.Printf("Updated client player: %d\n", event.PlayerId)
+						clientPlayer = event.PlayerId
+						window.SetTitle(fmt.Sprintf("Squares (Player %d)", clientPlayer+1))
+					}
 				case MoveRes:
 					break
 				case OtherMoveRes:
@@ -339,6 +343,8 @@ func clientMain() {
 					if event.PlayerId == squares.NPLAYERS-1 {
 						game.FirstRound = false
 					}
+				case ServerRes:
+					log.Printf("Server message: [%d] %s\n", event.Code, ServerResString(event.Code))
 				}
 			}
 		}

@@ -24,7 +24,25 @@ const (
 	MOVE_RES       = 4
 	OTHER_MOVE_RES = 5
 	SERVER_RES     = 6 // Generic server message
+
+	// Server responses
+	S_UNKNOWN        = 1 // Unknown client
+	S_GAME_NOT_GOING = 2 // Game not going
 )
+
+// Description of server messages
+var SERVER_RES_S = map[int]string{
+	S_UNKNOWN:        "unknown client",
+	S_GAME_NOT_GOING: "game not going",
+}
+
+func ServerResString(i int) string {
+	s, ok := SERVER_RES_S[i]
+	if !ok {
+		return fmt.Sprintf("unknown server message %d", i)
+	}
+	return s
+}
 
 // Connect and retrieve game information
 // Also used as a ping
@@ -60,6 +78,10 @@ type OtherMoveRes struct {
 	ActivePlayer int    `json:"active_player"`
 }
 
+type ServerRes struct {
+	Code int `json:"code"`
+}
+
 func SendMsg(w io.Writer, message any) error {
 	var msgType uint16
 	switch message.(type) {
@@ -73,6 +95,8 @@ func SendMsg(w io.Writer, message any) error {
 		msgType = MOVE_RES
 	case OtherMoveRes:
 		msgType = OTHER_MOVE_RES
+	case ServerRes:
+		msgType = SERVER_RES
 	default:
 		return errors.New("not implemented")
 	}
@@ -126,6 +150,10 @@ func RecvMsg(r io.Reader) (any, error) {
 		message = m
 	case OTHER_MOVE_RES:
 		m := OtherMoveRes{}
+		err = json.Unmarshal(data, &m)
+		message = m
+	case SERVER_RES:
+		m := ServerRes{}
 		err = json.Unmarshal(data, &m)
 		message = m
 	default:

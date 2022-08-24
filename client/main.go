@@ -160,8 +160,9 @@ func renderRotator(renderer *sdl.Renderer, clientPlayer, shapeId, rotation int) 
 
 // was render_ghost() in original C++ code
 func shouldRenderGhost(topleft sdl.Rect, shapeId, rotation int) bool {
-	x := int(topleft.X)+squares.GetShape(shapeId, rotation).Width*GRID_CELL_SIZE <= WINDOW_HEIGHT
-	y := int(topleft.Y)+squares.GetShape(shapeId, rotation).Height*GRID_CELL_SIZE <= BOARD_AREA_WIDTH
+	shape := squares.GetShape(shapeId, rotation)
+	x := int(topleft.X)+shape.Width*GRID_CELL_SIZE <= WINDOW_HEIGHT
+	y := int(topleft.Y)+shape.Height*GRID_CELL_SIZE <= BOARD_AREA_WIDTH
 	return x && y
 }
 

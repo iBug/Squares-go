@@ -17,23 +17,30 @@ import (
  * Req/Res only signifies direction, they do not necessarily correspond
  */
 
+// Using iota: https://go.dev/ref/spec#Constant_declarations
 const (
-	CONNECT_REQ    = 1
-	CONNECT_RES    = 2
-	MOVE_REQ       = 3
-	MOVE_RES       = 4
-	OTHER_MOVE_RES = 5
-	SERVER_RES     = 6 // Generic server message
+	_ = iota
+	CONNECT_REQ
+	CONNECT_RES
+	MOVE_REQ
+	MOVE_RES
+	OTHER_MOVE_RES
+	SERVER_RES // Generic server message
+)
 
+const (
 	// Server responses
-	S_UNKNOWN        = 1 // Unknown client
-	S_GAME_NOT_GOING = 2 // Game not going
+	_ = iota
+	S_CLIENT_REJECTED
+	S_GAME_NOT_GOING
+	S_GAME_OVER
 )
 
 // Description of server messages
 var SERVER_RES_S = map[int]string{
-	S_UNKNOWN:        "unknown client",
-	S_GAME_NOT_GOING: "game not going",
+	S_CLIENT_REJECTED: "client rejected",
+	S_GAME_NOT_GOING:  "game not going",
+	S_GAME_OVER:       "game is over",
 }
 
 func ServerResString(i int) string {

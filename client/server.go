@@ -37,7 +37,7 @@ func generateClientID() int {
 	return r1.Intn(IDRANGE) + 1
 }
 
-func findClientInfo(ci *ClientInfo) int {
+func findClientInfoSlot(ci *ClientInfo) int {
 	for i := range lobby {
 		if lobby[i] == ci {
 			return i
@@ -46,14 +46,16 @@ func findClientInfo(ci *ClientInfo) int {
 	return -1
 }
 
-func getAvailableLobbySlot() int {
+// Add a client to the lobby, return its lobby slot index
+func addClientToLobby(ci *ClientInfo) int {
 	for i := range lobby {
 		if lobby[i] == nil {
+			lobby[i] = ci
 			return i
 		}
 	}
-	lobby = append(lobby, nil)
-	return len(lobby) - 1
+	lobby = append(lobby, ci)
+	return len(lobby)
 }
 
 func handleClient(ci *ClientInfo, ch chan<- ClientMessage) {
@@ -63,7 +65,7 @@ func handleClient(ci *ClientInfo, ch chan<- ClientMessage) {
 		if err != nil {
 			if errors.Is(err, net.ErrClosed) {
 				// serverMain closed the connection
-				// pass
+				break
 			} else if err == io.EOF {
 				log.Printf("Client %d disconnected\n", ci.id)
 			} else {
@@ -78,7 +80,7 @@ func handleClient(ci *ClientInfo, ch chan<- ClientMessage) {
 
 func processClientMessage(cm ClientMessage) {
 	ci := cm.ci
-	num := findClientInfo(ci)
+	num := findClientInfoSlot(ci)
 SwitchCMType:
 	switch req := cm.m.(type) {
 	case ConnectReq:
@@ -104,9 +106,10 @@ SwitchCMType:
 					break SwitchCMType
 				}
 			}
+
 			// Unrecognized connection
 			log.Printf("Client[?] %d connected while game ongoing\n", ci.id)
-			SendMsg(ci.conn, ServerRes{S_UNKNOWN})
+			SendMsg(ci.conn, ServerRes{S_CLIENT_REJECTED})
 			ci.conn.Close()
 		} else {
 			// New connection as join request
@@ -114,10 +117,7 @@ SwitchCMType:
 			if ci.id == 0 {
 				ci.id = generateClientID()
 			}
-			num = len(lobby)
-			slot := getAvailableLobbySlot()
-			lobby[slot] = ci
-			if len(lobby) == squares.NPLAYERS {
+			if addClientToLobby(ci) == squares.NPLAYERS {
 				// Start game
 				gameOngoing = true
 				game.Reset()
@@ -143,15 +143,24 @@ SwitchCMType:
 			break
 		}
 		game.Insert(req.ShapeId, req.Rotation, pos, num)
-		game.AfterMove()
-		for i := 0; i < squares.NPLAYERS; i++ {
-			SendMsg(lobby[i].conn, OtherMoveRes{
-				PlayerId:     num,
-				ShapeId:      req.ShapeId,
-				Pos:          req.Pos,
-				Rotation:     req.Rotation,
-				ActivePlayer: game.ActivePlayer,
-			})
+		if game.AfterMove() {
+			for i := 0; i < squares.NPLAYERS; i++ {
+				SendMsg(lobby[i].conn, OtherMoveRes{
+					PlayerId:     num,
+					ShapeId:      req.ShapeId,
+					Pos:          req.Pos,
+					Rotation:     req.Rotation,
+					ActivePlayer: game.ActivePlayer,
+				})
+			}
+		} else {
+			// Game over
+			gameOngoing = false
+			for i := 0; i < squares.NPLAYERS; i++ {
+				SendMsg(lobby[i].conn, ServerRes{Code: S_GAME_OVER})
+			}
+			game.Reset()
+			resetLobby()
 		}
 	case ClientDisconnect:
 		if num == -1 {

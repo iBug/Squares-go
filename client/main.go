@@ -40,11 +40,18 @@ var (
 	clientId     = 0
 	clientPlayer = 0 // which player this client represents
 
+	// Global event channel, as a complement for sdl.PushEvent
+	chEvent = make(chan any, 8)
+
 	fServerAddr       = ""
 	fIsServer         = false
 	fLocalMultiplayer = false
 	fUseDarkTheme     = false
 )
+
+type ConnectionLost struct {
+	err error
+}
 
 func parseFlags() {
 	flag.StringVar(&fServerAddr, "a", "", "server address")
@@ -166,52 +173,56 @@ func shouldRenderGhost(topleft sdl.Rect, shapeId, rotation int) bool {
 	return x && y
 }
 
-func clientNetThread(conn net.Conn, windowId uint32, chEvent chan<- any) {
+func pushSdlEvent(code uint32, windowId uint32, e any) (bool, error) {
+	chEvent <- e
+	return sdl.PushEvent(&sdl.UserEvent{
+		Type:      code,
+		Timestamp: sdl.GetTicks(), //lint:ignore SA1019 compat
+		WindowID:  windowId,
+	})
+}
+
+func clientNetThread(conn net.Conn, windowId uint32) {
 	defer conn.Close()
 	for {
 		msg, err := RecvMsg(conn)
 		if err != nil {
-			log.Fatal(err)
+			pushSdlEvent(sdl.USEREVENT, windowId, ConnectionLost{err})
+			break
 		}
-		chEvent <- msg
-		sdl.PushEvent(&sdl.UserEvent{
-			Type:      sdl.USEREVENT,
-			Timestamp: sdl.GetTicks(), //lint:ignore SA1019 compat
-			WindowID:  windowId,
-		})
+		pushSdlEvent(sdl.USEREVENT, windowId, msg)
 	}
 }
 
-func setupClientNetThread(window *sdl.Window, chEvent chan<- any) (net.Conn, error) {
+func setupClientNetThread(window *sdl.Window) (net.Conn, error) {
 	conn, err := net.Dial("tcp", fServerAddr)
 	if err != nil {
 		return nil, err
 	}
 	windowID, _ := window.GetID()
-	go clientNetThread(conn, windowID, chEvent)
+	go clientNetThread(conn, windowID)
 	return conn, SendMsg(conn, ConnectReq{Id: clientId})
 }
 
 func clientMain() {
 	if err := sdl.Init(sdl.INIT_VIDEO | sdl.INIT_EVENTS); err != nil {
-		panic(err)
+		log.Fatal(err)
 	}
 	defer sdl.Quit()
 
 	window, renderer, err := sdl.CreateWindowAndRenderer(WINDOW_WIDTH, WINDOW_HEIGHT, 0)
 	if err != nil {
-		panic(err)
+		log.Fatal(err)
 	}
 	defer renderer.Destroy()
 	defer window.Destroy()
 	window.SetTitle(fmt.Sprintf("Squares (Player %d)", clientPlayer+1))
 
-	chEvent := make(chan any, 8)
 	var conn net.Conn
 	if !fLocalMultiplayer {
-		conn, err = setupClientNetThread(window, chEvent)
+		conn, err = setupClientNetThread(window)
 		if err != nil {
-			panic(err)
+			log.Fatal(err)
 		}
 	}
 
@@ -254,6 +265,8 @@ func clientMain() {
 					gridCursor.X -= GRID_CELL_SIZE
 				case sdl.K_d, sdl.K_RIGHT:
 					gridCursor.X += GRID_CELL_SIZE
+				case sdl.K_q:
+					rotation = squares.GetPrevRotation(shapeId, rotation)
 				case sdl.K_e, sdl.K_SPACE:
 					rotation = squares.GetNextRotation(shapeId, rotation)
 				case sdl.K_r:
@@ -350,6 +363,17 @@ func clientMain() {
 					}
 				case ServerRes:
 					log.Printf("Server message: [%d] %s\n", event.Code, ServerResString(event.Code))
+
+				case ConnectionLost:
+					errorS := fmt.Sprintf("Connection lost: %s", event.err)
+					log.Println(errorS)
+					sdl.ShowSimpleMessageBox(sdl.MESSAGEBOX_ERROR, "Error", errorS, nil)
+
+					// Retry connection
+					conn, err = setupClientNetThread(window)
+					if err != nil {
+						log.Fatal(err)
+					}
 				}
 			}
 		}

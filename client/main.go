@@ -256,6 +256,10 @@ func clientMain() {
 					gridCursor.X += GRID_CELL_SIZE
 				case sdl.K_e, sdl.K_SPACE:
 					rotation = squares.GetNextRotation(shapeId, rotation)
+				case sdl.K_r:
+					if !fLocalMultiplayer {
+						SendMsg(conn, ConnectReq{Id: clientId})
+					}
 				}
 			case *sdl.MouseWheelEvent:
 				if event.Y > 0 {

@@ -1,0 +1,49 @@
+name: build
+
+on:
+  push:
+    tags:
+      - '**'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    - uses: actions/setup-go@v3
+      with:
+        go-version: '^1.19'
+    - name: Install libraries
+      run: |
+        sudo apt update &&
+        sudo apt install -y --no-install-recommends \
+          gcc-mingw-w64-x86-64 \
+          libsdl2-dev
+    - uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cache/go-build
+          ~/go/pkg/mod
+        key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+        restore-keys: |
+          ${{ runner.os }}-go-
+    - name: Build Linux binary
+      working-directory: client
+      run: make
+    - name: Build Windows binary
+      working-directory: client
+      run: make windows
+    - uses: actions/create-release@v1
+      id: create_release
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ github.ref }}
+        release_name: ${{ github.ref }}
+        body: |
+          Release from GitHub Actions
+    - uses: softprops/action-gh-release@v1
+      with:
+        files: |
+          client/squares
+          client/squares.exe

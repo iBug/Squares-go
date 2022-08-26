@@ -55,7 +55,7 @@ func addClientToLobby(ci *ClientInfo) int {
 		}
 	}
 	lobby = append(lobby, ci)
-	return len(lobby)
+	return len(lobby) - 1
 }
 
 func handleClient(ci *ClientInfo, ch chan<- ClientMessage) {
@@ -117,7 +117,8 @@ SwitchCMType:
 			if ci.id == 0 {
 				ci.id = generateClientID()
 			}
-			if addClientToLobby(ci) == squares.NPLAYERS {
+			num = addClientToLobby(ci)
+			if len(lobby) == squares.NPLAYERS {
 				// Start game
 				gameOngoing = true
 				game.Reset()
